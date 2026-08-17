@@ -35,3 +35,4 @@ sim/
 *.gbrjob
 *.zip
 
+.cache/
