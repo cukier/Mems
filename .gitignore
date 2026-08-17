@@ -1,0 +1,37 @@
+# ESP-IDF build output
+build/
+managed_components/
+dependencies.lock
+
+# sdkconfig backups/local overrides (keep sdkconfig.defaults, sdkconfig itself is optional)
+sdkconfig.old
+
+# Editor / tooling
+.vscode/
+.clangd
+compile_commands.json
+
+# OS cruft
+.DS_Store
+
+# KiCad
+*.000
+*.bak
+*.bck
+*-bak
+*-backups/
+_autosave-*
+*.kicad_sch-bak
+*.kicad_pcb-bak
+*.kicad_prl
+*.lck
+fp-info-cache
+*-cache.lib
+*.net
+sim/
+*.pos
+*.drl
+*.gbr
+*.gbrjob
+*.zip
+
