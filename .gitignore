@@ -5,6 +5,8 @@ dependencies.lock
 
 # sdkconfig backups/local overrides (keep sdkconfig.defaults, sdkconfig itself is optional)
 sdkconfig.old
+.cache/
+sdkconfig
 
 # Editor / tooling
 .vscode/
@@ -34,5 +36,3 @@ sim/
 *.gbr
 *.gbrjob
 *.zip
-
-.cache/

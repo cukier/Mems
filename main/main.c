@@ -1,9 +1,11 @@
 #include "driver/gpio.h"
 #include "driver/i2c.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "lsm6ds3.h"
+#include "orientation.h"
 #include "st7735.h"
 
 static const char *TAG = "main";
@@ -13,14 +15,16 @@ static const char *TAG = "main";
 #define I2C_SCL_GPIO   GPIO_NUM_20
 #define I2C_CLK_HZ     400000
 
-// ST7735 1.44" TFT, SPI. Default dev-board wiring; adjust to match yours.
+// ST7735 1.44" TFT, SPI. Wiring per board schematic (docs/7036188100_1733311334_org.png):
+// LCD_RST=IO5 LCD_DC=IO0 LCD_MOSI=IO4 LCD_SCK=IO3 LCD_CS=IO2.
+// Backlight (LEDA) is hard-wired to 3V3 through R11, not GPIO-controlled.
 #define TFT_SPI_HOST  SPI2_HOST
-#define TFT_MOSI_GPIO GPIO_NUM_7
-#define TFT_SCLK_GPIO GPIO_NUM_6
-#define TFT_CS_GPIO   GPIO_NUM_10
-#define TFT_DC_GPIO   GPIO_NUM_2
-#define TFT_RST_GPIO  GPIO_NUM_3
-#define TFT_BL_GPIO   GPIO_NUM_4
+#define TFT_MOSI_GPIO GPIO_NUM_4
+#define TFT_SCLK_GPIO GPIO_NUM_3
+#define TFT_CS_GPIO   GPIO_NUM_2
+#define TFT_DC_GPIO   GPIO_NUM_0
+#define TFT_RST_GPIO  GPIO_NUM_5
+#define TFT_BL_GPIO   GPIO_NUM_NC
 #define TFT_CLK_HZ    20000000
 
 // Histogram layout: 6 vertical bars (accel x/y/z, gyro x/y/z) growing up or
@@ -76,13 +80,24 @@ void app_main(void) {
     st7735_fill_screen(ST7735_BLACK);
     draw_baseline();
 
+    orientation_t orientation;
+    orientation_init(&orientation);
+    int64_t last_us = esp_timer_get_time();
+
     lsm6ds3_data_t data;
     while (1) {
         esp_err_t err = lsm6ds3_read(&data);
         if (err == ESP_OK) {
-            ESP_LOGI(TAG, "accel[g]  x=%+.3f y=%+.3f z=%+.3f | gyro[dps] x=%+7.2f y=%+7.2f z=%+7.2f",
+            int64_t now_us = esp_timer_get_time();
+            float dt_s = (now_us - last_us) / 1e6f;
+            last_us = now_us;
+            orientation_update(&orientation, &data, dt_s);
+
+            ESP_LOGI(TAG, "accel[g]  x=%+.3f y=%+.3f z=%+.3f | gyro[dps] x=%+7.2f y=%+7.2f z=%+7.2f | "
+                     "roll=%+6.1f pitch=%+6.1f yaw=%+6.1f (yaw drifts, no compass)",
                      data.accel_g.x, data.accel_g.y, data.accel_g.z,
-                     data.gyro_dps.x, data.gyro_dps.y, data.gyro_dps.z);
+                     data.gyro_dps.x, data.gyro_dps.y, data.gyro_dps.z,
+                     orientation.roll_deg, orientation.pitch_deg, orientation.yaw_deg);
 
             draw_bar(0, data.accel_g.x, ACCEL_PX_PER_G, ST7735_RED);
             draw_bar(1, data.accel_g.y, ACCEL_PX_PER_G, ST7735_GREEN);
