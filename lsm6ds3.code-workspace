@@ -1,5 +1,6 @@
 {
   "folders": [
+    { "name": "Mems (repo root)", "path": "." },
     { "name": "lsm6ds3-reader (ESP-IDF project)", "path": "src/Mems" },
     { "name": "docs", "path": "docs" }
   ],
