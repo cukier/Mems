@@ -17,6 +17,7 @@ jobs:
         with:
           esp_idf_version: master
           target: esp32c3
+          path: src/Mems
           command: idf.py build
 
       - name: Upload firmware
@@ -24,10 +25,10 @@ jobs:
         with:
           name: lsm6ds3_reader-esp32c3
           path: |
-            build/*.bin
-            build/*.elf
-            build/*.map
-            build/flasher_args.json
-            build/bootloader/bootloader.bin
-            build/partition_table/partition-table.bin
+            src/Mems/build/*.bin
+            src/Mems/build/*.elf
+            src/Mems/build/*.map
+            src/Mems/build/flasher_args.json
+            src/Mems/build/bootloader/bootloader.bin
+            src/Mems/build/partition_table/partition-table.bin
           if-no-files-found: error
