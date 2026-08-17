@@ -171,3 +171,108 @@ esp_err_t st7735_fill_rect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t 
 esp_err_t st7735_fill_screen(uint16_t color) {
     return st7735_fill_rect(0, 0, ST7735_WIDTH, ST7735_HEIGHT, color);
 }
+
+// Minimal 5x7 bitmap font: only the characters this project's labels/readout
+// need (uppercase A/G/P/R/X/Y/Z, digits, '+' '-' '.' ':' and space). Each
+// glyph is 7 rows, top to bottom; each byte's bits 4..0 are columns 0..4
+// (bit4 = leftmost column), so a row like "01110" reads directly as 0x0E.
+typedef struct {
+    char ch;
+    uint8_t rows[7];
+} font_glyph_t;
+
+static const font_glyph_t s_font[] = {
+    {'A', {0x0E, 0x11, 0x11, 0x1F, 0x11, 0x11, 0x11}},
+    {'G', {0x0F, 0x10, 0x10, 0x13, 0x11, 0x11, 0x0F}},
+    {'P', {0x1E, 0x11, 0x11, 0x1E, 0x10, 0x10, 0x10}},
+    {'R', {0x1E, 0x11, 0x11, 0x1E, 0x14, 0x12, 0x11}},
+    {'X', {0x11, 0x11, 0x0A, 0x04, 0x0A, 0x11, 0x11}},
+    {'Y', {0x11, 0x11, 0x0A, 0x04, 0x04, 0x04, 0x04}},
+    {'Z', {0x1F, 0x01, 0x02, 0x04, 0x08, 0x10, 0x1F}},
+    {'0', {0x0E, 0x11, 0x13, 0x15, 0x19, 0x11, 0x0E}},
+    {'1', {0x04, 0x0C, 0x04, 0x04, 0x04, 0x04, 0x0E}},
+    {'2', {0x0E, 0x11, 0x01, 0x02, 0x04, 0x08, 0x1F}},
+    {'3', {0x1F, 0x02, 0x04, 0x02, 0x01, 0x11, 0x0E}},
+    {'4', {0x02, 0x06, 0x0A, 0x12, 0x1F, 0x02, 0x02}},
+    {'5', {0x1F, 0x10, 0x1E, 0x01, 0x01, 0x11, 0x0E}},
+    {'6', {0x06, 0x08, 0x10, 0x1E, 0x11, 0x11, 0x0E}},
+    {'7', {0x1F, 0x01, 0x02, 0x04, 0x08, 0x08, 0x08}},
+    {'8', {0x0E, 0x11, 0x11, 0x0E, 0x11, 0x11, 0x0E}},
+    {'9', {0x0E, 0x11, 0x11, 0x0F, 0x01, 0x02, 0x0C}},
+    {'+', {0x00, 0x04, 0x04, 0x1F, 0x04, 0x04, 0x00}},
+    {'-', {0x00, 0x00, 0x00, 0x1F, 0x00, 0x00, 0x00}},
+    {'.', {0x00, 0x00, 0x00, 0x00, 0x00, 0x0C, 0x0C}},
+    {':', {0x00, 0x0C, 0x0C, 0x00, 0x0C, 0x0C, 0x00}},
+    {' ', {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
+};
+#define FONT_GLYPH_COUNT (sizeof(s_font) / sizeof(s_font[0]))
+#define FONT_W 5
+#define FONT_H 7
+#define FONT_MAX_SCALE 4
+
+static const uint8_t *font_lookup(char c) {
+    for (size_t i = 0; i < FONT_GLYPH_COUNT; i++) {
+        if (s_font[i].ch == c) {
+            return s_font[i].rows;
+        }
+    }
+    return s_font[FONT_GLYPH_COUNT - 1].rows; // space (last entry)
+}
+
+esp_err_t st7735_draw_char(int16_t x, int16_t y, char c, uint16_t fg, uint16_t bg, uint8_t scale) {
+    if (scale == 0) {
+        scale = 1;
+    }
+    if (scale > FONT_MAX_SCALE) {
+        scale = FONT_MAX_SCALE;
+    }
+    const uint8_t *rows = font_lookup(c);
+    int16_t cell_w = FONT_W * scale;
+    int16_t cell_h = FONT_H * scale;
+
+    esp_err_t err = set_addr_window(x, y, cell_w, cell_h);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    uint16_t fg_be = (uint16_t)((fg << 8) | (fg >> 8));
+    uint16_t bg_be = (uint16_t)((bg << 8) | (bg >> 8));
+    static uint16_t line[FONT_W * FONT_MAX_SCALE];
+
+    gpio_set_level(s_dc_gpio, 1);
+    for (int r = 0; r < FONT_H; r++) {
+        uint8_t rowbits = rows[r];
+        int idx = 0;
+        for (int col = 0; col < FONT_W; col++) {
+            int bit = (rowbits >> (FONT_W - 1 - col)) & 1;
+            uint16_t px = bit ? fg_be : bg_be;
+            for (int s = 0; s < scale; s++) {
+                line[idx++] = px;
+            }
+        }
+        spi_transaction_t t = {
+            .length = (size_t)cell_w * 16,
+            .tx_buffer = line,
+        };
+        for (int s = 0; s < scale; s++) {
+            err = spi_device_polling_transmit(s_spi, &t);
+            if (err != ESP_OK) {
+                return err;
+            }
+        }
+    }
+    return ESP_OK;
+}
+
+esp_err_t st7735_draw_text(int16_t x, int16_t y, const char *s, uint16_t fg, uint16_t bg, uint8_t scale) {
+    int16_t advance = (int16_t)((FONT_W + 1) * (scale == 0 ? 1 : scale));
+    int16_t cx = x;
+    for (const char *p = s; *p != '\0'; p++) {
+        esp_err_t err = st7735_draw_char(cx, y, *p, fg, bg, scale);
+        if (err != ESP_OK) {
+            return err;
+        }
+        cx = (int16_t)(cx + advance);
+    }
+    return ESP_OK;
+}

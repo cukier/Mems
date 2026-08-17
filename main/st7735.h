@@ -50,6 +50,15 @@ esp_err_t st7735_fill_rect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t 
 // Fills the whole screen.
 esp_err_t st7735_fill_screen(uint16_t color);
 
+// Draws one character from a fixed 5x7 bitmap font (a small ASCII subset,
+// see st7735.c). Unsupported characters render as blank. `scale` multiplies
+// each font pixel into a scale x scale block (1 = 5x7 px, 2 = 10x14 px, ...).
+esp_err_t st7735_draw_char(int16_t x, int16_t y, char c, uint16_t fg, uint16_t bg, uint8_t scale);
+
+// Draws a left-to-right string using st7735_draw_char, advancing by
+// (5 * scale + scale) px per character (5px glyph + 1px gap, scaled).
+esp_err_t st7735_draw_text(int16_t x, int16_t y, const char *s, uint16_t fg, uint16_t bg, uint8_t scale);
+
 #ifdef __cplusplus
 }
 #endif

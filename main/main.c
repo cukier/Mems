@@ -1,3 +1,5 @@
+#include <stdio.h>
+
 #include "driver/gpio.h"
 #include "driver/i2c.h"
 #include "esp_log.h"
@@ -28,20 +30,36 @@ static const char *TAG = "main";
 #define TFT_CLK_HZ    20000000
 
 // Histogram layout: 6 vertical bars (accel x/y/z, gyro x/y/z) growing up or
-// down from a center baseline depending on sign.
-#define CHART_TOP      6
-#define CHART_BOTTOM   122
+// down from a center baseline depending on sign. A label row sits above the
+// chart, and the roll/pitch/yaw readout sits below it.
+#define LABEL_Y        0
+#define CHART_TOP      9
+#define CHART_BOTTOM   98
 #define CHART_BASELINE ((CHART_TOP + CHART_BOTTOM) / 2)
 #define CHART_HALF_H   ((CHART_BOTTOM - CHART_TOP) / 2)
 #define BAR_W          18
 #define BAR_GAP        2
 #define BAR_MARGIN     2
+#define ORIENT_Y0      102
+#define ORIENT_LINE_H  9
 
 // Full-scale deflection: accel bar fills half-height at +-2g, gyro bar fills
 // half-height at +-250dps (typical range for hand motion, not the sensor's
 // full +-2000dps span).
 #define ACCEL_PX_PER_G   (CHART_HALF_H / 2.0f)
 #define GYRO_PX_PER_DPS  (CHART_HALF_H / 250.0f)
+
+static const char *const BAR_LABELS[6] = {"AX", "AY", "AZ", "GX", "GY", "GZ"};
+static const uint16_t BAR_COLORS[6] = {
+    ST7735_RED, ST7735_GREEN, ST7735_BLUE, ST7735_YELLOW, ST7735_CYAN, ST7735_MAGENTA,
+};
+
+static void draw_bar_labels(void) {
+    for (int i = 0; i < 6; i++) {
+        int x = BAR_MARGIN + i * (BAR_W + BAR_GAP) + 3;
+        st7735_draw_text(x, LABEL_Y, BAR_LABELS[i], BAR_COLORS[i], ST7735_BLACK, 1);
+    }
+}
 
 static void draw_baseline(void) {
     st7735_fill_rect(0, CHART_BASELINE, ST7735_WIDTH, 1, ST7735_GRAY);
@@ -63,6 +81,16 @@ static void draw_bar(int col, float value, float px_per_unit, uint16_t color) {
     }
 }
 
+static void draw_orientation(const orientation_t *o) {
+    char line[16];
+    snprintf(line, sizeof(line), "R:%+04d", (int)o->roll_deg);
+    st7735_draw_text(BAR_MARGIN, ORIENT_Y0, line, ST7735_WHITE, ST7735_BLACK, 1);
+    snprintf(line, sizeof(line), "P:%+04d", (int)o->pitch_deg);
+    st7735_draw_text(BAR_MARGIN, ORIENT_Y0 + ORIENT_LINE_H, line, ST7735_WHITE, ST7735_BLACK, 1);
+    snprintf(line, sizeof(line), "Y:%+04d", (int)o->yaw_deg);
+    st7735_draw_text(BAR_MARGIN, ORIENT_Y0 + 2 * ORIENT_LINE_H, line, ST7735_WHITE, ST7735_BLACK, 1);
+}
+
 void app_main(void) {
     ESP_ERROR_CHECK(lsm6ds3_init(I2C_PORT, I2C_SDA_GPIO, I2C_SCL_GPIO, I2C_CLK_HZ));
 
@@ -78,6 +106,7 @@ void app_main(void) {
     };
     ESP_ERROR_CHECK(st7735_init(&tft_cfg));
     st7735_fill_screen(ST7735_BLACK);
+    draw_bar_labels();
     draw_baseline();
 
     orientation_t orientation;
@@ -107,6 +136,7 @@ void app_main(void) {
             draw_bar(5, data.gyro_dps.z, GYRO_PX_PER_DPS, ST7735_MAGENTA);
 
             draw_baseline();
+            draw_orientation(&orientation);
         } else {
             ESP_LOGE(TAG, "read failed: %s", esp_err_to_name(err));
         }
