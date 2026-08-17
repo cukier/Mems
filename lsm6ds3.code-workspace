@@ -1,0 +1,25 @@
+{
+  "folders": [
+    { "name": "lsm6ds3-reader (ESP-IDF project)", "path": "src/Mems" },
+    { "name": "docs", "path": "docs" }
+  ],
+  "settings": {
+    "idf.port": "/dev/ttyUSB0",
+    "idf.adapterTargetName": "esp32c3",
+    "idf.flashType": "UART",
+    "C_Cpp.default.compileCommands": "${workspaceFolder:lsm6ds3-reader (ESP-IDF project)}/build/compile_commands.json",
+    "files.associations": {
+      "*.h": "c",
+      "*.c": "c"
+    },
+    "files.exclude": {
+      "**/build": false
+    }
+  },
+  "extensions": {
+    "recommendations": [
+      "espressif.esp-idf-extension",
+      "ms-vscode.cpptools"
+    ]
+  }
+}
