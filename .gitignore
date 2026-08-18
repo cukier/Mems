@@ -8,6 +8,46 @@ sdkconfig.old
 .cache/
 sdkconfig
 
+# React Native / TypeScript Android app (apps/MemsMonitor/)
+node_modules/
+npm-debug.log
+yarn-error.log
+.idea
+.gradle
+.kotlin/
+.cxx/
+local.properties
+*.iml
+*.hprof
+*.keystore
+!debug.keystore
+*.jsbundle
+.metro-health-check*
+*.tsbuildinfo
+apps/MemsMonitor/coverage/
+apps/MemsMonitor/vendor/bundle/
+**/Pods/
+**/fastlane/report.xml
+**/fastlane/Preview.html
+**/fastlane/screenshots
+**/fastlane/test_output
+*.pbxuser
+!default.pbxuser
+*.mode1v3
+!default.mode1v3
+*.mode2v3
+!default.mode2v3
+*.perspectivev3
+!default.perspectivev3
+xcuserdata
+*.xccheckout
+*.moved-aside
+DerivedData
+*.hmap
+*.ipa
+*.xcuserstate
+**/.xcode.env.local
+
 # Editor / tooling
 .vscode/
 .clangd
