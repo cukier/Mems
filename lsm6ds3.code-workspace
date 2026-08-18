@@ -2,6 +2,7 @@
   "folders": [
     { "name": "Mems (repo root)", "path": "." },
     { "name": "lsm6ds3-reader (ESP-IDF project)", "path": "src/Mems" },
+    { "name": "MemsMonitor (Android app)", "path": "apps/MemsMonitor" },
     { "name": "docs", "path": "docs" }
   ],
   "settings": {
@@ -20,7 +21,9 @@
   "extensions": {
     "recommendations": [
       "espressif.esp-idf-extension",
-      "ms-vscode.cpptools"
+      "ms-vscode.cpptools",
+      "msjsdiag.vscode-react-native",
+      "dbaeumer.vscode-eslint"
     ]
   }
 }
