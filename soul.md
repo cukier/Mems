@@ -71,6 +71,53 @@ behavior (relay, TTL decay, seen-table dedup under real RF conditions) is
 unverified. Next real step is flashing 2+ boards and confirming with a BLE
 scanner that both readings appear and relay works past direct radio range.
 
+### MemsMonitor phone app as the mesh sink (2026-08-18)
+
+**Decision:** built the mesh sink as a bare React Native + TypeScript
+Android app (`apps/MemsMonitor/`) that scans for the flood-mesh BLE
+advertisements directly, instead of building a firmware-side gateway node
+(e.g. a Wi-Fi- or serial-bridging ESP32).
+
+**Why:** the earlier BLE flood-mesh entry above left the gateway/sink
+undecided, noting "any BLE scanner" as a stopgap. A phone app that scans,
+decodes, and graphs the packets live is closer to what's actually wanted
+(a usable dashboard) than either continuing to eyeball raw bytes in
+nRF Connect or building and flashing a dedicated bridge node. Bare React
+Native (not Expo) was used specifically because `react-native-ble-plx`
+needs native linking, which is friction-free in bare RN but requires a
+custom dev client under Expo.
+
+**How it works** (implementation: `apps/MemsMonitor/`):
+- `react-native-ble-plx` for scanning; `PermissionsAndroid` requests
+  `BLUETOOTH_SCAN`/`BLUETOOTH_CONNECT` on API 31+ or `ACCESS_FINE_LOCATION`
+  below that, matching the running API level.
+- `src/ble/meshPacket.ts` decodes the 24-byte `mesh_pkt_t` layout
+  (little-endian, offsets matching `mesh_net.c` exactly) from the scanned
+  device's `manufacturerData`, filtering on company ID `0xFFFF`.
+- Resolved without a live node to test against: read
+  `react-native-ble-plx`'s Android source (`AdvertisementData.java`,
+  `RxScanResultToScanResultMapper.java`, v3.5.1) rather than guess. On
+  Android, this library parses the raw scan record itself and does not
+  strip the company ID, so `manufacturerData` is the full 24-byte payload;
+  the decoder still accepts a 22-byte, company-ID-stripped shape
+  defensively and logs which shape it actually sees.
+- Packets are deduped per `(node_id, seq)` (small per-node seen-set,
+  capped so it doesn't grow unbounded) so flood-relay duplicates don't
+  produce duplicate graph points; each node keeps a capped 200-sample ring
+  buffer.
+- The chart is a hand-rolled `react-native-svg` line chart (three
+  polylines for accel X/Y/Z in g, legend, axis labels) rather than a
+  charting library dependency — the app only ever needs this one graph.
+
+**Verified:** `npx tsc --noEmit` passes with no type errors; `cd
+apps/MemsMonitor/android && ./gradlew assembleDebug` succeeds and produces
+a debug APK. **Not tested on a real device or against a real mesh node** —
+no Android device/emulator was available in the build environment, so the
+permission flow, live scanning, and the manufacturer-data shape assumption
+above are all unverified against actual hardware/radio behavior. Next real
+step is running the app on a phone in range of a flashed node and
+confirming packets decode and dedupe as expected.
+
 ## Open items / next steps
 
 - Flash multiple boards, verify mesh relay works over actual distance (not
