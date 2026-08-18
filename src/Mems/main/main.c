@@ -7,6 +7,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "lsm6ds3.h"
+#include "mesh_net.h"
 #include "orientation.h"
 #include "st7735.h"
 
@@ -93,6 +94,7 @@ static void draw_orientation(const orientation_t *o) {
 
 void app_main(void) {
     ESP_ERROR_CHECK(lsm6ds3_init(I2C_PORT, I2C_SDA_GPIO, I2C_SCL_GPIO, I2C_CLK_HZ));
+    ESP_ERROR_CHECK(mesh_net_init());
 
     st7735_config_t tft_cfg = {
         .host = TFT_SPI_HOST,
@@ -121,6 +123,7 @@ void app_main(void) {
             float dt_s = (now_us - last_us) / 1e6f;
             last_us = now_us;
             orientation_update(&orientation, &data, dt_s);
+            mesh_net_publish(&data, &orientation);
 
             ESP_LOGI(TAG, "accel[g]  x=%+.3f y=%+.3f z=%+.3f | gyro[dps] x=%+7.2f y=%+7.2f z=%+7.2f | "
                      "roll=%+6.1f pitch=%+6.1f yaw=%+6.1f (yaw drifts, no compass)",
