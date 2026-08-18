@@ -112,6 +112,42 @@ Using the VS Code extension instead: open `lsm6ds3.code-workspace`, set the
 port and target in the bottom status bar, then use the extension's Build →
 Flash → Monitor buttons.
 
+### Flashing a prebuilt binary (no ESP-IDF needed)
+
+Every push to `main` rebuilds the firmware and republishes it to the
+[`esp32c3-latest` release](https://github.com/cukier/Mems/releases/tag/esp32c3-latest)
+as three files: `lsm6ds3_reader.bin`, `bootloader.bin`, `partition-table.bin`.
+If a friend just wants to flash the board and doesn't want to install
+ESP-IDF, download those three into one folder instead of doing steps 1-2
+above.
+
+Flashing them still needs `esptool` (the tool `idf.py flash` itself uses
+under the hood). Get it via:
+
+- **pip**: `pip install esptool`
+- **Arduino IDE**: if the "esp32 by Espressif Systems" board package is
+  already installed (Boards Manager), esptool ships inside it at
+  `~/.arduino15/packages/esp32/tools/esptool_py/<version>/esptool`
+  (macOS/Linux — `%LOCALAPPDATA%\Arduino15\...` on Windows). Arduino IDE's
+  own Upload button runs this same tool internally; it's just not exposed
+  for arbitrary `.bin` files through the GUI, so the command line below is
+  the way to use it for this project.
+
+Then, from the folder with the three downloaded files:
+
+```sh
+esptool --chip esp32c3 --port PORT --baud 460800 \
+  --before default-reset --after hard-reset write-flash \
+  --flash-mode dio --flash-size 16MB --flash-freq 80m \
+  0x0     bootloader.bin \
+  0x8000  partition-table.bin \
+  0x10000 lsm6ds3_reader.bin
+```
+
+Replace `PORT` per step 3 above (and `esptool` with the full path if you're
+using the Arduino IDE copy). These offsets/settings match what `idf.py
+flash` uses itself — see `build/flasher_args.json` in a local build.
+
 ### Troubleshooting
 
 - **`idf.py` builds against the wrong Python env** ("configured with X but Y
