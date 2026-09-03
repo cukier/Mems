@@ -1,9 +1,9 @@
 #pragma once
 
-#include <stdint.h>
 #include "esp_err.h"
 #include "lsm6ds3.h"
 #include "orientation.h"
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
