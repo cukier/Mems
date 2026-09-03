@@ -1,0 +1,13 @@
+menu "INVOKE Band Config"
+
+    config INVOKE_DEFAULT_BAND_NUM
+        int "Default band number (1-64)"
+        range 1 64
+        default 1
+        help
+            Used only the first time a node boots with no band number yet
+            saved in NVS. Set the board's real number by writing it to NVS
+            (key "band" in namespace "invoke") during provisioning; this
+            value is just the out-of-the-box fallback.
+
+endmenu

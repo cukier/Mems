@@ -6,8 +6,8 @@
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "invoke_ble.h"
 #include "lsm6ds3.h"
-#include "mesh_net.h"
 #include "orientation.h"
 #include "st7735.h"
 
@@ -35,7 +35,8 @@ static const char *TAG = "main";
 // down from a center baseline depending on sign. A label row sits above the
 // chart, and the roll/pitch/yaw readout sits below it.
 #define LABEL_Y 0
-#define CHART_TOP 9
+#define VERSION_Y 9
+#define CHART_TOP 18
 #define CHART_BOTTOM 98
 #define CHART_BASELINE ((CHART_TOP + CHART_BOTTOM) / 2)
 #define CHART_HALF_H ((CHART_BOTTOM - CHART_TOP) / 2)
@@ -62,6 +63,21 @@ static void draw_bar_labels(void) {
     int x = BAR_MARGIN + i * (BAR_W + BAR_GAP) + 3;
     st7735_draw_text(x, LABEL_Y, BAR_LABELS[i], BAR_COLORS[i], ST7735_BLACK, 1);
   }
+}
+
+// Shows which build is actually flashed — invaluable when debugging "did my
+// update actually take" over BLE, where there's no other way to tell from
+// the outside. Deliberately *not* esp_app_get_description()->version/time:
+// that's a git-describe string plus a compile timestamp baked in by a
+// separate ESP-IDF-generated translation unit, and neither reliably
+// refreshes under an incremental build unless the commit changes (git
+// describe) or that specific file happens to get recompiled (its
+// __TIME__/__DATE__) — exactly the "did this rebuild actually happen"
+// signal this exists to answer can go stale. __TIME__ expanded right here
+// in main.c is guaranteed fresh on every build that touches this file,
+// which in practice is every build during active development.
+static void draw_fw_version(void) {
+  st7735_draw_text(BAR_MARGIN, VERSION_Y, "built " __TIME__, ST7735_WHITE, ST7735_BLACK, 1);
 }
 
 static void draw_baseline(void) {
@@ -101,7 +117,7 @@ static void draw_orientation(const orientation_t *o) {
 void app_main(void) {
   ESP_ERROR_CHECK(
       lsm6ds3_init(I2C_PORT, I2C_SDA_GPIO, I2C_SCL_GPIO, I2C_CLK_HZ));
-  ESP_ERROR_CHECK(mesh_net_init());
+  ESP_ERROR_CHECK(invoke_ble_init());
 
   st7735_config_t tft_cfg = {
       .host = TFT_SPI_HOST,
@@ -116,6 +132,7 @@ void app_main(void) {
   ESP_ERROR_CHECK(st7735_init(&tft_cfg));
   st7735_fill_screen(ST7735_BLACK);
   draw_bar_labels();
+  draw_fw_version();
   draw_baseline();
 
   orientation_t orientation;
@@ -130,7 +147,6 @@ void app_main(void) {
       float dt_s = (now_us - last_us) / 1e6f;
       last_us = now_us;
       orientation_update(&orientation, &data, dt_s);
-      mesh_net_publish(&data, &orientation);
 
       ESP_LOGI(TAG,
                "accel[g]  x=%+.3f y=%+.3f z=%+.3f | gyro[dps] x=%+7.2f "
