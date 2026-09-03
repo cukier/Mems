@@ -7,6 +7,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "invoke_ble.h"
+#include "invoke_game.h"
 #include "lsm6ds3.h"
 #include "orientation.h"
 #include "st7735.h"
@@ -84,6 +85,18 @@ static void draw_baseline(void) {
   st7735_fill_rect(0, CHART_BASELINE, ST7735_WIDTH, 1, ST7735_GRAY);
 }
 
+// The one-time-per-"session" dashboard chrome: drawn at boot, and again
+// whenever invoke_game hands the screen back after a question — its
+// COUNTDOWN/CAPTURE/ACK screens overwrite the whole panel, so the dashboard
+// needs a full repaint rather than just resuming its per-sample bar/text
+// updates, which only ever touch their own small regions.
+static void draw_dashboard_chrome(void) {
+  st7735_fill_screen(ST7735_BLACK);
+  draw_bar_labels();
+  draw_fw_version();
+  draw_baseline();
+}
+
 static void draw_bar(int col, float value, float px_per_unit, uint16_t color) {
   int x = BAR_MARGIN + col * (BAR_W + BAR_GAP);
 
@@ -130,14 +143,13 @@ void app_main(void) {
       .clock_hz = TFT_CLK_HZ,
   };
   ESP_ERROR_CHECK(st7735_init(&tft_cfg));
-  st7735_fill_screen(ST7735_BLACK);
-  draw_bar_labels();
-  draw_fw_version();
-  draw_baseline();
+  invoke_game_init();
+  draw_dashboard_chrome();
 
   orientation_t orientation;
   orientation_init(&orientation);
   int64_t last_us = esp_timer_get_time();
+  bool was_idle = true;
 
   lsm6ds3_data_t data;
   while (1) {
@@ -156,15 +168,25 @@ void app_main(void) {
                data.gyro_dps.y, data.gyro_dps.z, orientation.roll_deg,
                orientation.pitch_deg, orientation.yaw_deg);
 
-      draw_bar(0, data.accel_g.x, ACCEL_PX_PER_G, ST7735_RED);
-      draw_bar(1, data.accel_g.y, ACCEL_PX_PER_G, ST7735_GREEN);
-      draw_bar(2, data.accel_g.z, ACCEL_PX_PER_G, ST7735_BLUE);
-      draw_bar(3, data.gyro_dps.x, GYRO_PX_PER_DPS, ST7735_YELLOW);
-      draw_bar(4, data.gyro_dps.y, GYRO_PX_PER_DPS, ST7735_CYAN);
-      draw_bar(5, data.gyro_dps.z, GYRO_PX_PER_DPS, ST7735_MAGENTA);
+      invoke_game_tick(&data);
+      bool idle = invoke_game_is_idle();
+      if (idle) {
+        if (!was_idle) {
+          // A question just finished (COUNTDOWN/CAPTURE/ACK owned the
+          // screen); repaint the dashboard chrome those screens overwrote.
+          draw_dashboard_chrome();
+        }
+        draw_bar(0, data.accel_g.x, ACCEL_PX_PER_G, ST7735_RED);
+        draw_bar(1, data.accel_g.y, ACCEL_PX_PER_G, ST7735_GREEN);
+        draw_bar(2, data.accel_g.z, ACCEL_PX_PER_G, ST7735_BLUE);
+        draw_bar(3, data.gyro_dps.x, GYRO_PX_PER_DPS, ST7735_YELLOW);
+        draw_bar(4, data.gyro_dps.y, GYRO_PX_PER_DPS, ST7735_CYAN);
+        draw_bar(5, data.gyro_dps.z, GYRO_PX_PER_DPS, ST7735_MAGENTA);
 
-      draw_baseline();
-      draw_orientation(&orientation);
+        draw_baseline();
+        draw_orientation(&orientation);
+      }
+      was_idle = idle;
     } else {
       ESP_LOGE(TAG, "read failed: %s", esp_err_to_name(err));
     }

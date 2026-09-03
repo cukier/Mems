@@ -22,6 +22,7 @@
 #include "services/gatt/ble_svc_gatt.h"
 
 #include "invoke_ble.h"
+#include "invoke_game.h"
 
 static const char *TAG = "invoke_ble";
 
@@ -361,6 +362,11 @@ static void handle_q_frame(uint8_t cd, uint8_t hop, uint64_t bitmap) {
     if (q_dedupe_check_and_mark(bitmap, cd)) return;
 
     ESP_LOGI(TAG, "Q recv: cd=%u hop=%u bitmap=0x%016" PRIx64, cd, hop, bitmap);
+
+    bool is_member = (bitmap >> (s_band_num - 1)) & 1;
+    if (is_member) {
+        invoke_game_on_question(cd);
+    }
 
     if (hop == 0) return;
     mesh_frame_t relay;
