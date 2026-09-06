@@ -21,6 +21,13 @@ CONFIG_BT_NIMBLE_MAX_CONNECTIONS=2
 CONFIG_BT_NIMBLE_ATT_PREFERRED_MTU=512
 CONFIG_FREERTOS_HZ=1000
 
+# No host-based privacy / RPA. on_sync() sets its own static random address
+# once per boot and there is no bonding (MAX_BONDS=0), so the privacy machinery
+# only half-initialises — it fails to persist the local IRK and that state
+# intermittently breaks connection establishment (reason 0x3e). Spec §4 does
+# not ask for privacy.
+CONFIG_BT_NIMBLE_HS_PVCY=n
+
 # Flood mesh: every relay of a message matters, so the controller must not
 # dedupe scan results (spec §4 "scan passivo, sem filtro de duplicatas"). The
 # host already passes filter_duplicates=0, but the C3 controller keeps its own
