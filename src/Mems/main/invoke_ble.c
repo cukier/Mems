@@ -489,6 +489,15 @@ static void handle_question_command(const cJSON *root) {
     build_q_frame(&frame, cd, MESH_INITIAL_HOP, bitmap);
     enqueue_mesh_frame(&frame);
 
+    // The proxy node is also a band: if it's in the bitmap it runs the round
+    // too. Without this, a node that receives the question over GATT never
+    // enters COUNTDOWN/CAPTURE (it marked the frame seen above, so hearing its
+    // own broadcast back is a no-op) — a single-band setup would capture
+    // nothing. Mirrors handle_q_frame()'s membership check for mesh-received Qs.
+    if (s_band_num >= 1 && ((bitmap >> (s_band_num - 1)) & 1)) {
+        invoke_game_on_question(cd);
+    }
+
     ESP_LOGI(TAG, "Q send: cd=%u bitmap=0x%016" PRIx64, cd, bitmap);
 }
 
@@ -649,6 +658,12 @@ void invoke_mesh_send_gesture(char dir) {
     mesh_frame_t frame;
     build_g_frame(&frame, s_band_num, dir, MESH_INITIAL_HOP, seq);
     enqueue_mesh_frame(&frame);
+
+    // If an app is connected to *this* node, hand it our own gesture directly.
+    // handle_g_frame() would otherwise be the only path to notify_gesture(),
+    // and it never fires for our own gesture — we marked the seq seen above, so
+    // hearing our own broadcast back is deduped away.
+    notify_gesture(s_band_num, dir);
 
     ESP_LOGI(TAG, "G send: band=%u dir=%c seq=%u", s_band_num, dir, seq);
 }
