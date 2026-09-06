@@ -56,28 +56,40 @@ static void draw_countdown_screen(int remaining) {
     draw_centered(45, num, ST7735_YELLOW, 6);
 }
 
-static void draw_capture_screen(void) {
-    st7735_fill_screen(ST7735_BLACK);
-    draw_centered(2, "GO", ST7735_GREEN, 2);
-    st7735_draw_text(56, 20, "U", ST7735_WHITE, ST7735_BLACK, 3);
-    st7735_draw_text(6, 56, "L", ST7735_WHITE, ST7735_BLACK, 3);
-    st7735_draw_text(106, 56, "R", ST7735_WHITE, ST7735_BLACK, 3);
-    st7735_draw_text(56, 100, "D", ST7735_WHITE, ST7735_BLACK, 3);
+// Fixed direction<->letter map, matching the capture-screen layout and
+// docs/INVOKE_BLE_ESPECIFICACAO.md §2.1: up=A, left=B, right=C, down=D.
+static char dir_to_letter(char dir) {
+    switch (dir) {
+        case 'u': return 'A';
+        case 'l': return 'B';
+        case 'r': return 'C';
+        case 'd': return 'D';
+        default: return 0;
+    }
 }
 
-static const char *dir_label(char dir) {
-    switch (dir) {
-        case 'u': return "UP";
-        case 'd': return "DOWN";
-        case 'l': return "LEFT";
-        case 'r': return "RIGHT";
-        default: return "NO ANSWER";
-    }
+// "VÁ!" with the four answer letters on the arrows they map to:
+//        A (up)
+//   B (left)  C (right)
+//        D (down)
+static void draw_capture_screen(void) {
+    st7735_fill_screen(ST7735_BLACK);
+    draw_centered(2, "VA!", ST7735_YELLOW, 2);
+    st7735_draw_text(56, 20, "A", ST7735_WHITE, ST7735_BLACK, 3);
+    st7735_draw_text(6, 56, "B", ST7735_WHITE, ST7735_BLACK, 3);
+    st7735_draw_text(106, 56, "C", ST7735_WHITE, ST7735_BLACK, 3);
+    st7735_draw_text(56, 100, "D", ST7735_WHITE, ST7735_BLACK, 3);
 }
 
 static void draw_ack_screen(char dir) {
     st7735_fill_screen(ST7735_BLACK);
-    draw_centered(50, dir_label(dir), dir ? ST7735_GREEN : ST7735_RED, dir ? 3 : 2);
+    char letter = dir_to_letter(dir);
+    if (letter) {
+        char s[2] = {letter, '\0'};
+        draw_centered(36, s, ST7735_GREEN, 7);
+    } else {
+        draw_centered(50, "NO ANSWER", ST7735_RED, 2);
+    }
 }
 
 // --- Gesture detection ----------------------------------------------------

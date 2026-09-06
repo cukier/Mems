@@ -21,7 +21,7 @@ interface GestureRow {
   t: number;
   band: string | null;
   dir: Direction;
-  letter: string | null;
+  letter: string;
   correct: boolean | null;
 }
 
@@ -75,9 +75,8 @@ export function App() {
       onStateChange: setState,
       onGesture: (g: Gesture) => {
         const q = questionRef.current;
-        const letter = q ? directionToLetter(q, g.dir) : null;
-        const isCorrect =
-          q && q.correct ? (letter ? letter === directionToLetter(q, q.correct) : false) : null;
+        const letter = directionToLetter(g.dir);
+        const isCorrect = q?.correct ? letter === directionToLetter(q.correct) : null;
         setGestures((prev) => [
           { t: Date.now(), band: g.band, dir: g.dir, letter, correct: isCorrect },
           ...prev.slice(0, 199),

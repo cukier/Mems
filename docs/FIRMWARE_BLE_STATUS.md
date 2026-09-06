@@ -13,6 +13,31 @@ _Atualizado em 2026-09-06. Leia isto antes de mexer no BLE do app._
   Atualize o firmware com o duty-cycle de scan"_ — está **factualmente errada**
   e deve ser removida.
 
+## Layout das setas / mapa direção ↔ letra (o Showcase do base44 está errado)
+
+O display da pulseira (foto real do dispositivo) usa este layout na tela de
+CAPTURE ("VÁ!") e no resultado:
+
+```
+            A
+            ↑
+    B  ←    +    →  C
+            ↓
+            D
+```
+
+**`up`=A, `left`=B, `right`=C, `down`=D** — ordem de leitura topo, esquerda,
+direita, baixo. Mapa **fixo**.
+
+O Showcase do base44 hoje ilustra `A`=cima, `B`=baixo, `C`=esquerda,
+`D`=direita — **trocar** para o mapa acima. `buildDispatch` deve montar `o`
+como `{up: A, left: B, right: C, down: D}` e `directionToLetter` deve usar o
+mesmo mapa fixo (não inferir por ordem de slot preenchido).
+
+Alinhado no repo: `docs/INVOKE_BLE_ESPECIFICACAO.md` §2.1/§3.3,
+`src/Mems/main/invoke_game.c` (`dir_to_letter`, `draw_capture_screen`),
+`apps/invoke-console/src/protocol.ts` (`DIR_TO_LETTER`).
+
 ## UUIDs canônicos (o cliente deve usar exatamente estes)
 
 | Papel | UUID |

@@ -56,13 +56,26 @@ Disparo de questão (o gabarito **nunca** vai para as pulseiras):
   "cd": 5,                   // contagem regressiva em segundos até o "VÁ"
   "s": "Enunciado da questão (opcional, para o OLED)",
   "o": {                     // opções por direção do gesto
-    "up": "texto opção",     // answer_a
-    "down": "texto opção",   // answer_b
-    "left": "texto opção",   // answer_c
-    "right": "texto opção"   // answer_d
+    "up": "texto opção",     // A
+    "left": "texto opção",   // B
+    "right": "texto opção",  // C
+    "down": "texto opção"    // D
   }
 }
 ```
+
+Mapa direção ↔ letra (layout do display da pulseira — ver §3.3):
+
+```
+            A
+            ↑
+     B  ←   +   →  C
+            ↓
+            D
+```
+
+`up`=A, `left`=B, `right`=C, `down`=D. Ordem de leitura: topo, esquerda,
+direita, baixo. O app (`buildDispatch`) e o firmware seguem esse mapa fixo.
 
 ### 2.2 Nó → app (NUS TX, JSON notify)
 
@@ -115,13 +128,23 @@ carregá-la e depois volta ao advertising normal (nome + UUID NUS).
 
 Estados com timing fixo, sincronizados pelo recebimento da mensagem Q:
 
-1. **IDLE** — OLED em standby (`INVOKE-xx`).
+1. **IDLE** — display em standby (`INVOKE-xx`, "aguardando pergunta").
 2. **COUNTDOWN** — exibe a contagem regressiva `cd` → `3, 2, 1`.
-3. **CAPTURE** ("VÁ", 8 s) — janela de captura do gesto do IMU (MPU6050);
-   primeiro gesto válido vence. OLED mostra as 4 direções ↔ opções.
-4. **ACK/CONFIRM** — mostra a direção registrada (~2 s) e volta a IDLE.
+3. **CAPTURE** ("VÁ!", 8 s) — janela de captura do gesto do IMU; primeiro
+   gesto válido vence. O display mostra as 4 setas rotuladas A/B/C/D:
 
-O nó envia o gesto em `mesh_send_gesture` assim que o captura.
+   ```
+             A (↑)
+   B (←)             C (→)
+             D (↓)
+   ```
+
+4. **ACK/CONFIRM** — mostra a letra registrada A/B/C/D (~2 s) e volta a IDLE.
+
+O nó envia o gesto (`d`: `"up"|"down"|"left"|"right"`) em `mesh_send_gesture`
+assim que o captura. O mapa fixo direção↔letra está em §2.1.
+A captura é **depois** da contagem, não durante — contagem e captura são
+fases separadas.
 
 ---
 

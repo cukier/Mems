@@ -11,7 +11,16 @@ export const NUS_RX = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';
 export const NUS_TX = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';
 
 export type Direction = 'up' | 'down' | 'left' | 'right';
-export const DIRECTIONS: Direction[] = ['up', 'down', 'left', 'right'];
+// Ordered to match the fixed direction<->letter map / capture-screen layout
+// (spec §2.1, §3.3): up=A, left=B, right=C, down=D — reading order top, left,
+// right, bottom.
+export const DIRECTIONS: Direction[] = ['up', 'left', 'right', 'down'];
+export const DIR_TO_LETTER: Record<Direction, string> = {
+  up: 'A',
+  left: 'B',
+  right: 'C',
+  down: 'D',
+};
 
 // §2.1 app -> node. The answer key never goes on the air — only `bands`, `cd`,
 // and the display hints (`s`, `o`).
@@ -82,10 +91,8 @@ export function isDirection(v: string): v is Direction {
   return (DIRECTIONS as string[]).includes(v);
 }
 
-// Map a gesture direction to the answer letter A/B/C/D by the option slots that
-// carry text, in up/down/left/right order.
-export function directionToLetter(q: QuestionInput, dir: Direction): string | null {
-  const used = DIRECTIONS.filter((d) => q.options[d]?.trim());
-  const i = used.indexOf(dir);
-  return i >= 0 ? 'ABCD'[i] : null;
+// Fixed map — up=A, left=B, right=C, down=D — same as the firmware's
+// dir_to_letter() and the capture-screen layout.
+export function directionToLetter(dir: Direction): string {
+  return DIR_TO_LETTER[dir];
 }
