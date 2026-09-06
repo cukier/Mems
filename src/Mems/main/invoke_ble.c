@@ -423,6 +423,19 @@ static void start_scan(void) {
     struct ble_gap_disc_params disc_params = {0};
     disc_params.passive = 1;
     disc_params.filter_duplicates = 0; // every relay matters, not just the first
+    // Duty-cycle the scan (units are 0.625ms): 20ms window every 100ms, so the
+    // established GATT link keeps most of the single C3 radio.
+    //
+    // This scan only ever runs *while an app is connected* (armed in
+    // gap_event_cb on CONNECT, cancelled on DISCONNECT). A continuous scan
+    // alongside connectable advertising starves the connection-establishment
+    // window on the single-antenna C3: inbound connects fail with reason 0x3e
+    // (BLE_ERR_CONN_ESTABLISHMENT) before service discovery — both Chrome and
+    // nRF Connect just spin on "connecting" and drop. Keeping the radio
+    // scan-free until the link is up fixes that; once connected, the node still
+    // relays mesh traffic to the app as spec §2.4 requires.
+    disc_params.itvl = 160;
+    disc_params.window = 32;
 
     int rc = ble_gap_disc(own_addr_type, BLE_HS_FOREVER, &disc_params, scan_event_cb, NULL);
     if (rc != 0) {
@@ -542,6 +555,10 @@ static int gap_event_cb(struct ble_gap_event *event, void *arg) {
             if (event->connect.status == 0) {
                 s_conn_handle = event->connect.conn_handle;
                 ESP_LOGI(TAG, "app connected, conn_handle=%d", s_conn_handle);
+                // Now this node is the proxy: start the mesh scan so gestures
+                // from the other bands can be relayed to the app (spec §2.4).
+                // The scan is off until here — see start_scan() for why.
+                start_scan();
             } else {
                 set_adv_normal(); // connection attempt failed, keep advertising
             }
@@ -551,7 +568,10 @@ static int gap_event_cb(struct ble_gap_event *event, void *arg) {
             ESP_LOGI(TAG, "app disconnected, reason=%d", event->disconnect.reason);
             s_conn_handle = BLE_HS_CONN_HANDLE_NONE;
             s_tx_subscribed = false;
-            set_adv_normal(); // spec §2 rule 5: return to normal advertising
+            ble_gap_disc_cancel(); // stop the mesh scan: no app to relay to, and
+                                   // a scan-free radio keeps us reliably
+                                   // connectable (see start_scan())
+            set_adv_normal();      // spec §2 rule 5: return to normal advertising
             return 0;
 
         case BLE_GAP_EVENT_SUBSCRIBE:
@@ -599,7 +619,9 @@ static void on_sync(void) {
                  addr_val[2], addr_val[1], addr_val[0]);
     }
 
-    start_scan();
+    // No scan here on purpose — see start_scan(). It is armed on connect and
+    // cancelled on disconnect, so an unconnected node advertises at full rate
+    // and is reliably connectable.
     set_adv_normal();
 }
 

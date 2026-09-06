@@ -12,7 +12,7 @@
 #include "orientation.h"
 #include "st7735.h"
 
-static const char *TAG = "main";
+static const char* TAG = "main";
 
 #define I2C_PORT I2C_NUM_0
 #define I2C_SDA_GPIO GPIO_NUM_21
@@ -53,7 +53,7 @@ static const char *TAG = "main";
 #define ACCEL_PX_PER_G (CHART_HALF_H / 2.0f)
 #define GYRO_PX_PER_DPS (CHART_HALF_H / 250.0f)
 
-static const char *const BAR_LABELS[6] = {"AX", "AY", "AZ", "GX", "GY", "GZ"};
+static const char* const BAR_LABELS[6] = {"AX", "AY", "AZ", "GX", "GY", "GZ"};
 static const uint16_t BAR_COLORS[6] = {
     ST7735_RED,    ST7735_GREEN, ST7735_BLUE,
     ST7735_YELLOW, ST7735_CYAN,  ST7735_MAGENTA,
@@ -78,7 +78,8 @@ static void draw_bar_labels(void) {
 // in main.c is guaranteed fresh on every build that touches this file,
 // which in practice is every build during active development.
 static void draw_fw_version(void) {
-  st7735_draw_text(BAR_MARGIN, VERSION_Y, "built " __TIME__, ST7735_WHITE, ST7735_BLACK, 1);
+  st7735_draw_text(BAR_MARGIN, VERSION_Y, "built " __TIME__, ST7735_WHITE,
+                   ST7735_BLACK, 1);
 }
 
 static void draw_baseline(void) {
@@ -115,7 +116,7 @@ static void draw_bar(int col, float value, float px_per_unit, uint16_t color) {
   }
 }
 
-static void draw_orientation(const orientation_t *o) {
+static void draw_orientation(const orientation_t* o) {
   char line[16];
   snprintf(line, sizeof(line), "R:%+04d", (int)o->roll_deg);
   st7735_draw_text(BAR_MARGIN, ORIENT_Y0, line, ST7735_WHITE, ST7735_BLACK, 1);
@@ -160,13 +161,13 @@ void app_main(void) {
       last_us = now_us;
       orientation_update(&orientation, &data, dt_s);
 
-      ESP_LOGI(TAG,
-               "accel[g]  x=%+.3f y=%+.3f z=%+.3f | gyro[dps] x=%+7.2f "
-               "y=%+7.2f z=%+7.2f | "
-               "roll=%+6.1f pitch=%+6.1f yaw=%+6.1f (yaw drifts, no compass)",
-               data.accel_g.x, data.accel_g.y, data.accel_g.z, data.gyro_dps.x,
-               data.gyro_dps.y, data.gyro_dps.z, orientation.roll_deg,
-               orientation.pitch_deg, orientation.yaw_deg);
+      // ESP_LOGI(TAG,
+      //          "accel[g]  x=%+.3f y=%+.3f z=%+.3f | gyro[dps] x=%+7.2f "
+      //          "y=%+7.2f z=%+7.2f | "
+      //          "roll=%+6.1f pitch=%+6.1f yaw=%+6.1f (yaw drifts, no compass)",
+      //          data.accel_g.x, data.accel_g.y, data.accel_g.z, data.gyro_dps.x,
+      //          data.gyro_dps.y, data.gyro_dps.z, orientation.roll_deg,
+      //          orientation.pitch_deg, orientation.yaw_deg);
 
       invoke_game_tick(&data);
       bool idle = invoke_game_is_idle();

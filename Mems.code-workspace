@@ -1,0 +1,30 @@
+{
+  "folders": [
+    { "name": "Mems (repo root)", "path": "." },
+    { "name": "Firmware (ESP32-C3 / ESP-IDF)", "path": "src/Mems" },
+    { "name": "MemsMonitor (React Native app)", "path": "apps/MemsMonitor" },
+    { "name": "Docs", "path": "docs" }
+  ],
+  "settings": {
+    "idf.port": "/dev/ttyUSB0",
+    "idf.adapterTargetName": "esp32c3",
+    "idf.flashType": "UART",
+    "C_Cpp.default.compileCommands": "${workspaceFolder:Firmware (ESP32-C3 / ESP-IDF)}/build/compile_commands.json",
+    "files.associations": {
+      "*.h": "c",
+      "*.c": "c"
+    },
+    "files.exclude": {
+      "**/.git": true
+    }
+  },
+  "extensions": {
+    "recommendations": [
+      "espressif.esp-idf-extension",
+      "ms-vscode.cpptools",
+      "msjsdiag.vscode-react-native",
+      "dbaeumer.vscode-eslint",
+      "esbenp.prettier-vscode"
+    ]
+  }
+}
