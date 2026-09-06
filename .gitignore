@@ -76,3 +76,6 @@ sim/
 *.gbr
 *.gbrjob
 *.zip
+
+# base44 web-app export — tracked reference snapshot (see docs/FIRMWARE_BLE_STATUS.md)
+!docs/invoke-band-class.zip
