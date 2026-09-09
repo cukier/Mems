@@ -16,7 +16,7 @@ import {
   NUS_RX,
   NUS_SERVICE,
   NUS_TX,
-  parseGesture,
+  parseAnswer,
   type QuestionDispatch,
 } from './protocol';
 import type { Transport, TransportEvents } from './transport';
@@ -145,9 +145,9 @@ export class BleTransport implements Transport {
     if (!value) return;
     const raw = new TextDecoder().decode(value);
     this.log('rx', raw.trim());
-    const g = parseGesture(raw);
-    if (g) this.ev.onGesture(g, raw.trim());
-    else this.log('warn', `Notificação TX ignorada (não é um gesto): ${raw.trim()}`);
+    const a = parseAnswer(raw);
+    if (a) this.ev.onAnswer(a, raw.trim());
+    else this.log('warn', `Notificação TX ignorada (não é uma resposta): ${raw.trim()}`);
   };
 
   private handleDrop() {

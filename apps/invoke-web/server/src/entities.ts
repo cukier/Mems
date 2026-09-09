@@ -2,18 +2,9 @@ import type { FastifyInstance } from 'fastify';
 import { randomUUID } from 'node:crypto';
 import { db, hydrate, type Record_, type Row } from './db.js';
 
-// The set of entities the base44 app knows about (base44/entities/*.jsonc).
-// Anything outside this list is rejected so the API can't be used as an open
-// key/value store.
-export const ENTITIES = [
-  'School',
-  'SchoolClass',
-  'Teacher',
-  'Student',
-  'Question',
-  'Band',
-  'QuizSession',
-] as const;
+// The collections the INVOKE Band tool uses. Anything outside this list is
+// rejected so the API can't be used as an open key/value store.
+export const ENTITIES = ['Question', 'Round'] as const;
 
 const ENTITY_SET = new Set<string>(ENTITIES);
 

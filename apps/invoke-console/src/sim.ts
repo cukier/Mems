@@ -1,10 +1,12 @@
 // Simulator transport: exercises the whole UI with no hardware. It accepts a
-// question dispatch, waits out the countdown, then emits one random gesture per
-// band listed in `bands` (plus the occasional miss), so the gesture list and
-// scoring can be developed offline.
+// question dispatch, waits out the countdown, then emits one random answer per
+// band (plus the occasional miss) so the board and scoring can be developed
+// offline.
 
-import { DIRECTIONS, type Direction, type QuestionDispatch } from './protocol';
+import { LETTERS, type Letter, type QuestionDispatch } from './protocol';
 import type { Transport, TransportEvents } from './transport';
+
+const SIM_BANDS = [1, 2, 3, 4, 5, 6, 7, 8];
 
 export class SimTransport implements Transport {
   readonly kind = 'sim' as const;
@@ -29,16 +31,19 @@ export class SimTransport implements Transport {
 
   async sendQuestion(dispatch: QuestionDispatch): Promise<void> {
     this.ev.onLog('tx', JSON.stringify(dispatch));
-    const delayBase = dispatch.cd * 1000;
-    for (const band of dispatch.bands) {
-      // ~15% of bands "miss" the capture window
-      if (Math.random() < 0.15) continue;
-      const jitter = 400 + Math.random() * 3000;
-      this.schedule(delayBase + jitter, () => {
-        const dir = DIRECTIONS[Math.floor(Math.random() * DIRECTIONS.length)] as Direction;
-        const raw = JSON.stringify({ b: band, d: dir });
+    const bands = dispatch.bands?.length ? dispatch.bands : SIM_BANDS;
+    const openAt = dispatch.cd * 1000;
+    for (const band of bands) {
+      if (Math.random() < 0.12) continue; // a few bands never answer
+      const jitter = 400 + Math.random() * dispatch.to * 1000;
+      this.schedule(openAt + jitter, () => {
+        const ans =
+          Math.random() < 0.1
+            ? ''
+            : (LETTERS[Math.floor(Math.random() * 4)] as Letter);
+        const raw = JSON.stringify({ t: 'a', rid: dispatch.rid, n: band, ans });
         this.ev.onLog('rx', raw);
-        this.ev.onGesture({ band, dir }, raw);
+        this.ev.onAnswer({ band, ans }, raw);
       });
     }
   }

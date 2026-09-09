@@ -78,9 +78,7 @@ function entityClient<T>(name: string): EntityClient<T> {
 type Entities = { [K in EntityName]: EntityClient<EntityMap[K]> };
 
 const entities = Object.fromEntries(
-  (
-    ['School', 'SchoolClass', 'Teacher', 'Student', 'Question', 'Band', 'QuizSession'] as EntityName[]
-  ).map((name) => [name, entityClient(name)]),
+  (['Question', 'Round'] as EntityName[]).map((name) => [name, entityClient(name)]),
 ) as Entities;
 
 export const api = { entities };

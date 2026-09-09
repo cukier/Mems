@@ -1,4 +1,7 @@
-import type { Option } from '@/hooks/useOptions';
+export interface Option {
+  value: string;
+  label: string;
+}
 
 export interface CrudField {
   name: string;
@@ -6,6 +9,4 @@ export interface CrudField {
   type?: 'text' | 'number' | 'date' | 'textarea' | 'select';
   required?: boolean;
   options?: Option[];
-  /** show a "scan Bluetooth" button next to the input (Bands) */
-  ble?: boolean;
 }

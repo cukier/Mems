@@ -1,8 +1,9 @@
 {
   "folders": [
     { "name": "Mems (repo root)", "path": "." },
-    { "name": "Firmware (ESP32-C3 / ESP-IDF)", "path": "src/Mems" },
-    { "name": "MemsMonitor (React Native app)", "path": "apps/MemsMonitor" },
+    { "name": "Firmware (ESP32-C3 / ESP-IDF)", "path": "firmware" },
+    { "name": "Web app (apps/invoke-web)", "path": "apps/invoke-web" },
+    { "name": "BLE console (apps/invoke-console)", "path": "apps/invoke-console" },
     { "name": "Docs", "path": "docs" }
   ],
   "settings": {
@@ -22,7 +23,6 @@
     "recommendations": [
       "espressif.esp-idf-extension",
       "ms-vscode.cpptools",
-      "msjsdiag.vscode-react-native",
       "dbaeumer.vscode-eslint",
       "esbenp.prettier-vscode"
     ]

@@ -1,40 +1,56 @@
 import { Check, X } from 'lucide-react';
-import DirectionArrow from '@/components/DirectionArrow';
-import type { QuizResult } from '@/types';
+import type { RoundResult } from '@/types';
 
 export default function ResultsPanel({
   results,
   correct,
 }: {
-  results: QuizResult[];
+  results: RoundResult[];
   correct?: string;
 }) {
-  if (!results?.length) return null;
+  if (!results?.length) {
+    return <p className="text-sm text-muted-foreground py-3">Nenhuma resposta.</p>;
+  }
   const hits = results.filter((r) => r.is_correct).length;
   return (
-    <div className="rounded-2xl border border-border bg-card p-5">
-      <div className="flex items-baseline justify-between">
-        <p className="text-sm font-medium">Respostas recebidas</p>
-        <p className="text-xs text-muted-foreground">
-          {hits}/{results.length} corretas · gabarito {correct}
-        </p>
+    <div>
+      <p className="text-xs text-muted-foreground mb-3">
+        {hits}/{results.length} corretas{correct ? ` · gabarito ${correct}` : ''}
+      </p>
+      <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
+        {[...results]
+          .sort((a, b) => a.band - b.band)
+          .map((r) => {
+            const ok = correct && r.is_correct;
+            const bad = correct && !r.is_correct;
+            return (
+              <div
+                key={r.band}
+                className={`rounded-lg border p-2 text-center ${
+                  ok
+                    ? 'border-emerald-400/40 bg-emerald-400/10'
+                    : bad
+                      ? 'border-red-400/30 bg-red-400/5'
+                      : 'border-border'
+                }`}
+              >
+                <p className="text-[10px] text-muted-foreground">
+                  #{String(r.band).padStart(2, '0')}
+                </p>
+                <p className="text-lg font-light">{r.answer || '—'}</p>
+                {correct && (
+                  <div className="flex justify-center">
+                    {ok ? (
+                      <Check className="w-3 h-3 text-emerald-400" />
+                    ) : (
+                      <X className="w-3 h-3 text-red-400" />
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
       </div>
-      <ul className="mt-4 divide-y divide-border">
-        {results.map((r, i) => (
-          <li key={i} className="flex items-center gap-3 py-2.5">
-            {r.is_correct ? (
-              <Check className="w-4 h-4 text-emerald-400" />
-            ) : (
-              <X className="w-4 h-4 text-red-400" />
-            )}
-            <span className="text-sm truncate flex-1">{r.student_name}</span>
-            <span className="text-xs text-muted-foreground">Pulseira {r.band_number || '—'}</span>
-            <span className="flex items-center gap-1 text-xs text-amber-300">
-              <DirectionArrow dir={r.direction} className="w-3.5 h-3.5" /> {r.answer}
-            </span>
-          </li>
-        ))}
-      </ul>
     </div>
   );
 }

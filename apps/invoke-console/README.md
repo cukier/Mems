@@ -6,7 +6,7 @@ It's a bench tool and a testbed for the BLE transport; the full teacher app is
 a separate, later effort.
 
 Protocol: [`../../docs/INVOKE_BLE_ESPECIFICACAO.md`](../../docs/INVOKE_BLE_ESPECIFICACAO.md).
-Firmware: [`../../src/Mems/main/invoke_ble.c`](../../src/Mems/main/invoke_ble.c).
+Firmware: [`../../firmware/main/invoke_ble.c`](../../firmware/main/invoke_ble.c).
 UUIDs and message shapes live in [`src/protocol.ts`](src/protocol.ts) — keep them
 in sync with the firmware.
 

@@ -1,194 +1,177 @@
-# INVOKE Band — Especificação BLE (implementação de referência)
+# INVOKE Band — Especificação BLE (protocolo v2)
 
-Documento consolidado do protocolo BLE do INVOKE, alinhado com o app (Web Bluetooth)
-e com o firmware ESP32-C3 / NimBLE. Qualquer firmware que seguir esta especificação
-funciona com o app sem alterações.
+Documento de referência do protocolo entre o **app do professor** (Web
+Bluetooth, `apps/invoke-web`) e as **pulseiras** (ESP32-C3 / NimBLE,
+`firmware/`). Qualquer firmware que seguir esta especificação funciona com o app
+sem alterações.
+
+Substitui a v1 (flood-mesh de 11 bytes no advertising legado) — ela não
+carregava o texto da pergunta. `docs/FIRMWARE_BLE_STATUS.md` fica como registro
+histórico dos fixes de conexão.
 
 ---
 
-## 1. Visão geral da arquitetura
+## 1. Arquitetura
 
 ```
 [ App Web (Chrome/Android, Web Bluetooth) ]
-        |  GATT (1 conexão) — Nordic UART Service (NUS)
-[ Nó proxy/gateway ESP32-C3 ]
-        |  flooding mesh no advertising (manufacturer data)
-[ Pulseiras INVOKE 1..64 da turma ]
+        |  1 conexão GATT — Nordic UART Service (NUS)
+[ Pulseira "proxy" ]
+        |  re-transmite a pergunta em advertising estendido (BLE 5)
+        v
+[ Pulseiras 1..64 da turma ]  --(resposta em advertising estendido)-->  proxy --(GATT notify)--> app
 ```
 
-- O navegador mantém **uma única conexão GATT** com qualquer nó da rede (o "proxy").
-- As pulseiras formam uma **rede mesh por flooding no advertising**: cada nó
-  retransmite as mensagens que recebe (hop limitado). Não há pareamento BLE
-  entre as pulseiras — tudo via advertising + scan passivo.
-- O nó conectado ao app também é membro do mesh (anuncia e escaneia ao mesmo
-  tempo em que mantém a conexão GATT).
+- O navegador mantém **uma** conexão GATT, com a pulseira que ele escolher no
+  seletor (o "proxy" daquela rodada).
+- O proxy recebe a pergunta pelo GATT e **re-transmite** por **advertising
+  estendido** (fragmentada em chunks). As outras pulseiras escutam, rodam a
+  rodada localmente e transmitem a própria resposta do mesmo jeito.
+- O proxy remonta as respostas e as repassa ao app por GATT notify.
+- Topologia estrela, alcance de ~1 sala, **sem multi-hop**.
 
 ---
 
 ## 2. Camada GATT — Nordic UART Service (NUS)
 
-| Item | Valor |
+| Item | UUID |
 |---|---|
-| Service UUID | `6e400001-b5a3-f393-e0a9-e50e24dcca9e` |
-| RX (app → nó, **write**) | `6e400002-b5a3-f393-e0a9-e50e24dcca9e` |
-| TX (nó → app, **notify**) | `6e400003-b5a3-f393-e0a9-e50e24dcca9e` |
+| Serviço | `6e400001-b5a3-f393-e0a9-e50e24dcca9e` |
+| RX (app → proxy, **write** / write-no-rsp) | `6e400002-b5a3-f393-e0a9-e50e24dcca9e` |
+| TX (proxy → app, **notify** + CCCD `0x2902`) | `6e400003-b5a3-f393-e0a9-e50e24dcca9e` |
 
 Regras obrigatórias:
 
-1. O **UUID do serviço NUS (128 bits) deve estar no pacote de advertising**
-   (lista incompleta de UUIDs 128-bit, AD type `0x06`). É assim que o seletor
-   do Chrome e o nRF Connect identificam a pulseira como INVOKE.
-2. **Sem bonding/pairing** (`CONFIG_BT_NIMBLE_MAX_BONDS=0`) — o prompt de
-   pareamento quebra o fluxo Web Bluetooth e causa GATT 133 no Android.
-3. MTU preferido: **512**.
-4. O nó continua anunciando e escaneando o mesh **enquanto o GATT está
-   conectado** (a conexão com o app não interrompe o papel mesh).
-5. Ao desconectar, o nó retorna ao advertising normal.
+1. O **UUID do serviço** deve estar no pacote de advertising (lista incompleta
+   de UUIDs 128-bit, AD type `0x06`) — é assim que o Chrome e o nRF Connect
+   listam a pulseira.
+2. **Sem bonding/pairing** (`CONFIG_BT_NIMBLE_MAX_BONDS=0`).
+3. Endereço BLE **aleatório estático, novo a cada boot** (evita cache GATT
+   velho no Android).
+4. Nome do advertising: **`INVOKE-xx`** (`xx` = número da pulseira, 2 dígitos).
+   O app extrai o número daí.
+5. MTU preferido 512.
 
-### 2.1 App → nó (NUS RX, JSON)
-
-Disparo de questão (o gabarito **nunca** vai para as pulseiras):
+### 2.1 App → proxy (RX) — disparo de pergunta
 
 ```json
 {
-  "t": "q",                  // tipo: disparo de questão
-  "bands": ["1", "3", "7"],  // números das pulseiras da turma (string ou número)
-  "cd": 5,                   // contagem regressiva em segundos até o "VÁ"
-  "s": "Enunciado da questão (opcional, para o OLED)",
-  "o": {                     // opções por direção do gesto
-    "up": "texto opção",     // answer_a
-    "down": "texto opção",   // answer_b
-    "left": "texto opção",   // answer_c
-    "right": "texto opção"   // answer_d
-  }
+  "t": "q",
+  "rid": 1737,          // id da rodada (o app gera; 0..65535)
+  "cd": 3,              // contagem regressiva (s) antes de abrir a resposta
+  "to": 15,             // janela de resposta (s) depois da contagem
+  "s": "Qual é a capital do Brasil?",
+  "a": "São Paulo",     // opção A  (mostrada em "cima")
+  "b": "Rio de Janeiro",// opção B  ("baixo")
+  "c": "Brasília",       // opção C  ("esquerda")
+  "d": "Salvador",       // opção D  ("direita")
+  "bands": [3, 7]       // opcional; ausente/vazio = todas as pulseiras
 }
 ```
 
-### 2.2 Nó → app (NUS TX, JSON notify)
+O gabarito **nunca** é enviado às pulseiras.
 
-Gesto capturado por uma pulseira (formato mesh repassado pelo proxy):
+### 2.2 Proxy → app (TX notify) — resposta de uma pulseira
 
 ```json
-{ "b": "3", "d": "up" }
+{ "t": "a", "rid": 1737, "n": 3, "ans": "C" }
 ```
 
-- `b`: número da pulseira (string).
-- `d`: direção do gesto — `"up" | "down" | "left" | "right"`.
-
-Tolerância (legado): o app também aceita `"3:up"` e `"up"`, mas o formato
-JSON acima é o canônico.
+- `n`: número da pulseira.
+- `ans`: `"A" | "B" | "C" | "D"`, ou `""` se a pulseira travou sem resposta.
 
 ---
 
-## 3. Camada Mesh — flooding no advertising
+## 3. Camada mesh — advertising estendido (BLE 5)
 
-Transporte: **manufacturer data** (AD type `0xFF`), company ID `0xFFFF`.
-Quando uma mensagem viaja, o nó troca o advertising por ~1200 ms para
-carregá-la e depois volta ao advertising normal (nome + UUID NUS).
+Transporte: **manufacturer data** (AD type `0xFF`), company ID `0xFFFF`, numa
+instância de advertising **estendido não-conectável** (instância 1). A
+instância 0 continua sendo o advertising legado conectável (flags + UUID NUS +
+nome) — nunca sai do ar, então o seletor do Chrome sempre lista `INVOKE-xx`.
 
-### 3.1 Mensagem Q (questão) — 11 bytes de payload
-
-```
-'Q' | cd (1B) | hop (1B) | bitmap[8] (little-endian u64)
-```
-
-- `cd`: contagem regressiva em segundos.
-- `hop`: hops restantes (default inicial **2**); cada retransmissão decrementa.
-- `bitmap`: bit `n-1` = pulseira nº `n` (pulseiras 1..64). Só as pulseiras do
-  bitmap participam da questão; as demais ignoram.
-- Dedupe: mesma chave (bitmap ^ cd) dentro de 3 s não reprocessa/retransmite.
-
-### 3.2 Mensagem G (gesto) — 5 bytes de payload
+### 3.1 Frame
 
 ```
-'G' | band (1B) | dir (1B) | hop (1B) | seq (1B)
+0xFF 0xFF | 'I' 'V' | type(1) | rid(2, LE) | total_chunks(1) | chunk_idx(1) | payload_len(1) | payload…
 ```
 
-- `band`: número da pulseira (1..64).
-- `dir`: `'u' | 'd' | 'l' | 'r'` (up/down/left/right).
-- `seq`: contador incremental por pulseira — **dedupe por (band, seq)**:
-  cada nó retransmite um gesto uma única vez.
-- Ao retransmitir: **jitter de 10–50 ms** antes de anunciar (evita colisão
-  quando vários nós retransmitem juntos).
+- `type`: `'Q'` (pergunta) ou `'A'` (resposta).
+- Cada chunk que não é o último tem `payload_len == 180`; o último tem o resto.
+- **`'Q'`**: o JSON da §2.1, fatiado em chunks de ≤180 B. O proxy cicla por
+  todos os índices durante ~2000 ms (≈55 ms por set) e para.
+- **`'A'`**: o JSON da §2.2 (~40 B, 1 chunk), transmitido por ~1200 ms com
+  jitter inicial de 10–50 ms.
+- Remontagem: uma rodada em voo por vez; a pulseira junta os chunks por `rid` e
+  age quando tem todos os índices. Dedupe de pergunta por `rid`; dedupe de
+  resposta por `(rid, n)`.
 
-### 3.3 Loop do nó (state machine)
+### 3.2 Scan
 
-Estados com timing fixo, sincronizados pelo recebimento da mensagem Q:
-
-1. **IDLE** — OLED em standby (`INVOKE-xx`).
-2. **COUNTDOWN** — exibe a contagem regressiva `cd` → `3, 2, 1`.
-3. **CAPTURE** ("VÁ", 8 s) — janela de captura do gesto do IMU (MPU6050);
-   primeiro gesto válido vence. OLED mostra as 4 direções ↔ opções.
-4. **ACK/CONFIRM** — mostra a direção registrada (~2 s) e volta a IDLE.
-
-O nó envia o gesto em `mesh_send_gesture` assim que o captura.
+- Passivo, **sem filtro de duplicatas** (`CONFIG_BT_CTRL_BLE_SCAN_DUPL=n`).
+- Pulseira **ociosa** (não é proxy, sem rodada): scan com **duty-cycle ~10%**
+  (janela 30 ms / intervalo 300 ms) — leve o bastante pra não estragar o
+  estabelecimento de conexão de entrada (a causa do `0x3e` na v1), mas
+  suficiente pra ouvir o início de uma rodada. **Ajustar em hardware.**
+- Pulseira **em rodada** ou **conectada (proxy)**: scan **contínuo**; as
+  pulseiras que não são o proxy soltam o advertising conectável (instância 0)
+  durante a rodada e o restauram ao voltar pro WAIT.
 
 ---
 
-## 4. Advertising e scan (requisitos exatos)
+## 4. Máquina de estados da pulseira
 
-- **Adv packet (≤31 B)**: flags (`0x02 0x01 0x06`) + lista incompleta de
-  UUIDs 128-bit (`0x11 0x06` + 16 B do NUS em little-endian).
-- **Scan response (≤31 B)**: nome `INVOKE-xx` (xx = número da pulseira, 2
-  dígitos) + manufacturer data opcional (Q ocupa 27 B, G ocupa 20 B — dentro
-  do limite de 31).
-- **Papéis NimBLE obrigatórios** (todos ativos ao mesmo tempo):
-  `ROLE_PERIPHERAL`, `ROLE_BROADCASTER`, `ROLE_OBSERVER`.
-- Scan passivo, **sem filtro de duplicatas** (as retransmissões do mesh
-  importam).
-- Intervalo de advertising normal: `0x20–0x40` (20–40 ms — rápido o bastante
-  para o Chrome listar e para o mesh responder rápido).
-
-### sdkconfig.defaults (ESP-IDF, ESP32-C3)
-
-```ini
-CONFIG_IDF_TARGET="esp32c3"
-CONFIG_BT_ENABLED=y
-CONFIG_BT_NIMBLE_ENABLED=y
-CONFIG_BT_NIMBLE_ROLE_PERIPHERAL=y
-CONFIG_BT_NIMBLE_ROLE_BROADCASTER=y
-CONFIG_BT_NIMBLE_ROLE_OBSERVER=y
-CONFIG_BT_NIMBLE_MAX_BONDS=0
-CONFIG_BT_NIMBLE_MAX_CONNECTIONS=2
-CONFIG_BT_NIMBLE_ATT_PREFERRED_MTU=512
-CONFIG_FREERTOS_HZ=1000
+```
+WAIT ──(pergunta)──> COUNTDOWN ──(cd s)──> ANSWER ──(to s)──> RESULT ──(~3 s)──> WAIT
 ```
 
----
+1. **WAIT** — tela: nome `INVOKE-xx` grande + UUID do serviço NUS + "AGUARDANDO
+   PERGUNTA".
+2. **COUNTDOWN** — tela: enunciado (com quebra de linha) + as 4 opções em lista
+   + contador `cd → 1`.
+3. **ANSWER** — mesma tela; a opção pra qual o pulso está inclinado é destacada
+   **em tempo real** (ver §5), + barra de tempo encolhendo. A opção mantida no
+   instante em que o tempo zera é a resposta (zona morta central = sem
+   resposta).
+4. **RESULT** — tela: "SUA RESPOSTA" + a letra + o texto da opção, por ~3 s.
+   A pulseira transmite a resposta (`'A'` mesh) e, se for o proxy, também
+   notifica o app direto.
 
-## 5. Número da pulseira
-
-- Cada nó tem um **número único 1..64** gravado em NVS (definido na
-  gravação/config da placa).
-- Deriva o nome BLE (`INVOKE-xx`), a identificação nos gestos (`b`) e a
-  participação no bitmap das questões.
-
----
-
-## 6. Armadilhas conhecidas (Android / Web Bluetooth)
-
-1. **Cache de serviços do Android**: após um reflash, o celular pode devolver
-   a tabela GATT antiga (ou vazia). Solução: desligar/religar o Bluetooth
-   do celular. O app já reconecta e refaz a descoberta de serviços.
-2. **GATT 133 na 1ª tentativa**: normal com ESP32/NimBLE; reconectar 1–2×
-   resolve (o app já faz isso).
-3. **Scan BLE no Android exige localização ativada** e permissão
-   "Dispositivos por perto" para o Chrome.
-4. **O UUID NUS no advertising é obrigatório** para a pulseira aparecer no
-   seletor do Chrome quando há filtro por serviço — nunca remover do adv.
-5. Enquanto uma mensagem mesh ocupa o advertising (1,2 s), o UUID NUS sai do
-   ar momentaneamente — normal; os seletores fazem rescan.
+Cada pulseira conta `cd`+`to` a partir do instante em que remontou a pergunta —
+há uma folga de ≤~1–2 s entre pulseiras. Aceitável na v1; um campo de
+"deadline" comum resolve depois.
 
 ---
 
-## 7. Checklist de conformidade do firmware
+## 5. Inclinação → resposta (mapa fixo)
 
-- [ ] Service NUS com os 3 UUIDs exatos (RX write, TX notify).
-- [ ] UUID NUS no advertising; nome `INVOKE-xx` no scan response.
-- [ ] Sem bonding (`MAX_BONDS=0`).
-- [ ] Mesh: Q (11 B) e G (5 B) em manufacturer data `0xFFFF`, hop inicial 2,
-      dedupe (chave Q por 3 s / seq G), jitter 10–50 ms ao retransmitir.
-- [ ] Continue anunciando + escaneando com GATT conectado.
-- [ ] JSON do app parseado conforme §2.1; gesto reportado como §2.2.
-- [ ] Timing: countdown `cd` s, captura 8 s, ack ~2 s.
-- [ ] Número da pulseira em NVS (1..64).
+Roll/pitch absolutos (referenciados à gravidade, filtro complementar em
+`firmware/main/orientation.c`).
+
+| Inclinação | Opção |
+|---|---|
+| cima    | **A** |
+| baixo   | **B** |
+| esquerda| **C** |
+| direita | **D** |
+| centro (zona morta) | — (sem resposta) |
+
+- `TILT_THRESH_DEG` (default 25°): passa disso no eixo dominante → seleciona.
+- `TILT_DEADZONE_DEG` (default 12°): abaixo disso nos dois eixos → limpa a
+  seleção. Entre a zona morta e o limiar → mantém a seleção atual (histerese).
+- Limiares e sinais são `#define` — **ajustar num pulso de verdade**.
+
+---
+
+## 6. Checklist de conformidade do firmware
+
+- [ ] Serviço NUS com os 3 UUIDs exatos (RX write, TX notify + CCCD).
+- [ ] UUID NUS no advertising legado (instância 0, sempre no ar); nome
+      `INVOKE-xx`.
+- [ ] Sem bonding; endereço aleatório novo a cada boot.
+- [ ] Instância 1 estendida não-conectável com o frame da §3.1.
+- [ ] Remontagem por `rid`; dedupe `Q` por `rid`, `A` por `(rid, n)`.
+- [ ] Scan sem dedupe; duty-cycle ~10% ocioso / contínuo em rodada e no proxy.
+- [ ] Proxy: RX GATT → roda local (se endereçado) **e** re-transmite `Q`.
+- [ ] Proxy: `A` remontado (ou próprio) → TX notify §2.2.
+- [ ] Máquina de estados §4 com o timing `cd`/`to`/~3 s.
+- [ ] Mapa fixo da §5; número da pulseira em NVS (1..64).

@@ -1,33 +1,11 @@
-import {
-  BarChart3,
-  Gamepad2,
-  GraduationCap,
-  HelpCircle,
-  LayoutDashboard,
-  MonitorSmartphone,
-  Radio,
-  School,
-  Trophy,
-  Users,
-  UserSquare2,
-  Watch,
-} from 'lucide-react';
+import { History, HelpCircle, Radio } from 'lucide-react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
 import ThemeToggle from '@/components/ThemeToggle';
 
 const NAV = [
-  { to: '/', label: 'Painel', icon: LayoutDashboard },
-  { to: '/live', label: 'Sessão', icon: Radio },
-  { to: '/performance', label: 'Desempenho', icon: BarChart3 },
-  { to: '/ranking', label: 'Ranking', icon: Trophy },
-  { to: '/game', label: 'Jogo', icon: Gamepad2 },
-  { to: '/showcase', label: 'Telas', icon: MonitorSmartphone },
-  { to: '/questions', label: 'Questões', icon: HelpCircle },
-  { to: '/students', label: 'Alunos', icon: GraduationCap },
-  { to: '/classes', label: 'Turmas', icon: Users },
-  { to: '/teachers', label: 'Professores', icon: UserSquare2 },
-  { to: '/schools', label: 'Escolas', icon: School },
-  { to: '/bands', label: 'Pulseiras', icon: Watch },
+  { to: '/', label: 'Rodada ao vivo', icon: Radio },
+  { to: '/questions', label: 'Banco de perguntas', icon: HelpCircle },
+  { to: '/history', label: 'Histórico', icon: History },
 ];
 
 export default function Layout() {
@@ -36,7 +14,7 @@ export default function Layout() {
     <div className="min-h-screen bg-background text-foreground">
       <div className="pointer-events-none fixed inset-x-0 top-0 h-64 bg-gradient-to-b from-amber-500/10 to-transparent" />
       <header className="sticky top-0 z-30 backdrop-blur-xl bg-background/80 border-b border-border">
-        <div className="max-w-6xl mx-auto px-5 h-16 flex items-center justify-between">
+        <div className="max-w-5xl mx-auto px-5 h-16 flex items-center justify-between">
           <Link to="/" className="flex items-center gap-2.5">
             <span className="w-8 h-8 rounded-lg bg-gradient-to-br from-amber-400 to-orange-600 flex items-center justify-center">
               <Radio className="w-4 h-4 text-black" />
@@ -47,7 +25,7 @@ export default function Layout() {
           </Link>
           <ThemeToggle />
         </div>
-        <nav className="max-w-6xl mx-auto px-3 pb-2 flex gap-1 overflow-x-auto scrollbar-none">
+        <nav className="max-w-5xl mx-auto px-3 pb-2 flex gap-1 overflow-x-auto scrollbar-none">
           {NAV.map(({ to, label, icon: Icon }) => {
             const active = pathname === to;
             return (
@@ -67,7 +45,7 @@ export default function Layout() {
           })}
         </nav>
       </header>
-      <main className="max-w-6xl mx-auto px-5 py-8 relative">
+      <main className="max-w-5xl mx-auto px-5 py-8 relative">
         <Outlet />
       </main>
     </div>

@@ -1,5 +1,12 @@
 # Estado do BLE — firmware e cliente web
 
+> **Histórico.** Escrito para o protocolo v1 (flood-mesh de 11 bytes no
+> advertising legado). O protocolo atual é o v2 —
+> `docs/INVOKE_BLE_ESPECIFICACAO.md`. Este arquivo fica como registro dos
+> fixes de conexão (`0x3e`), que o v2 mantém: byte order do UUID 128-bit,
+> endereço aleatório novo a cada boot, sem privacy meio-configurada, e nada de
+> scan pesado sempre-ligado num nó conectável não conectado.
+
 _Atualizado em 2026-09-06. Leia isto antes de mexer no BLE do app._
 
 ## TL;DR

@@ -1,9 +1,7 @@
-import type { Question } from '@/types';
+// Fixed answer cross for the band's screen: A = up, B = down, C = left,
+// D = right. `active` is the letter currently selected (or none).
 
-// Block arrow (viewBox 48x48), amber outline with a neon glow.
-// `active` fills the body and intensifies the glow.
 const PATH_UP = 'M24 2 L44 20 L36 20 L36 46 L12 46 L12 20 Z';
-
 const ANGLE: Record<string, number> = { up: 0, right: 90, down: 180, left: 270 };
 const LETTER_POS: Record<string, { x: number; y: number }> = {
   up: { x: 24, y: 34 },
@@ -17,15 +15,14 @@ export function CrossArrow({
   letter,
   active,
 }: {
-  dir: string;
+  dir: 'up' | 'down' | 'left' | 'right';
   letter: string;
   active?: boolean;
 }) {
-  const angle = ANGLE[dir] ?? 0;
-  const pos = LETTER_POS[dir] ?? LETTER_POS.up;
+  const pos = LETTER_POS[dir];
   return (
     <svg viewBox="0 0 48 48" className="w-full h-full">
-      <g transform={`rotate(${angle} 24 24)`}>
+      <g transform={`rotate(${ANGLE[dir]} 24 24)`}>
         <path
           d={PATH_UP}
           fill={active ? 'rgba(255,179,71,0.28)' : 'transparent'}
@@ -54,34 +51,21 @@ export function CrossArrow({
   );
 }
 
-// Cross layout: up on top, left/right on the sides, down at the bottom.
-// Each position's letter comes from the question's direction mapping.
-export default function CrossArrows({
-  question,
-  activeDir,
-}: {
-  question?: Question;
-  activeDir?: string;
-}) {
-  const q = question as unknown as Record<string, unknown> | undefined;
-  const byDir: Record<string, string> = {};
-  (['A', 'B', 'C', 'D'] as const).forEach((l) => {
-    const d = String(q?.[`answer_${l.toLowerCase()}_dir`] ?? '').toLowerCase();
-    if (d) byDir[d] = l;
-  });
+export default function CrossArrows({ active }: { active?: string }) {
+  const a = String(active ?? '').toUpperCase();
   return (
     <div className="grid grid-cols-3 grid-rows-3 gap-1 w-full max-w-[180px]">
       <div className="col-start-2 row-start-1 h-14">
-        <CrossArrow dir="up" letter={byDir.up || 'A'} active={activeDir === 'up'} />
+        <CrossArrow dir="up" letter="A" active={a === 'A'} />
       </div>
       <div className="col-start-1 row-start-2 h-14">
-        <CrossArrow dir="left" letter={byDir.left || 'C'} active={activeDir === 'left'} />
+        <CrossArrow dir="left" letter="C" active={a === 'C'} />
       </div>
       <div className="col-start-3 row-start-2 h-14">
-        <CrossArrow dir="right" letter={byDir.right || 'D'} active={activeDir === 'right'} />
+        <CrossArrow dir="right" letter="D" active={a === 'D'} />
       </div>
       <div className="col-start-2 row-start-3 h-14">
-        <CrossArrow dir="down" letter={byDir.down || 'B'} active={activeDir === 'down'} />
+        <CrossArrow dir="down" letter="B" active={a === 'B'} />
       </div>
     </div>
   );

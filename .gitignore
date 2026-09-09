@@ -1,4 +1,4 @@
-# ESP-IDF build output
+# ESP-IDF build output (firmware/)
 build/
 managed_components/
 dependencies.lock
@@ -8,50 +8,18 @@ sdkconfig.old
 .cache/
 sdkconfig
 
-# React Native / TypeScript Android app (apps/MemsMonitor/)
+# Node / web (apps/)
 node_modules/
 npm-debug.log
 yarn-error.log
-.idea
-.gradle
-.kotlin/
-.cxx/
-local.properties
-*.iml
-*.hprof
-*.keystore
-!debug.keystore
-*.jsbundle
-.metro-health-check*
 *.tsbuildinfo
-apps/MemsMonitor/coverage/
-apps/MemsMonitor/vendor/bundle/
-**/Pods/
-**/fastlane/report.xml
-**/fastlane/Preview.html
-**/fastlane/screenshots
-**/fastlane/test_output
-*.pbxuser
-!default.pbxuser
-*.mode1v3
-!default.mode1v3
-*.mode2v3
-!default.mode2v3
-*.perspectivev3
-!default.perspectivev3
-xcuserdata
-*.xccheckout
-*.moved-aside
-DerivedData
-*.hmap
-*.ipa
-*.xcuserstate
-**/.xcode.env.local
+dist/
 
 # Editor / tooling
 .vscode/
 .clangd
 compile_commands.json
+.idea
 
 # OS cruft
 .DS_Store
@@ -77,5 +45,5 @@ sim/
 *.gbrjob
 *.zip
 
-# base44 web-app export — tracked reference snapshot (see docs/FIRMWARE_BLE_STATUS.md)
+# base44 web-app export — tracked reference snapshot
 !docs/invoke-band-class.zip
