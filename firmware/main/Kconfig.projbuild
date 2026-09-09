@@ -10,4 +10,21 @@ menu "INVOKE Band Config"
             (key "band" in namespace "invoke") during provisioning; this
             value is just the out-of-the-box fallback.
 
+    config INVOKE_GATEWAY
+        bool "This band is the teacher-app gateway"
+        default y
+        help
+            The gateway band advertises connectable and does NOT scan while
+            idle, so the teacher's browser connects to it reliably (a scan on
+            the ESP32-C3's single radio starves inbound connection
+            establishment -> reason 0x3e). It scans only once connected or
+            while a round is running.
+
+            Every other band advertises non-connectable and scans
+            continuously to hear the question over extended advertising.
+
+            With a single band, leave this on. In a classroom, flash exactly
+            one band with it on (or override at runtime: NVS key "gw" = 1/0
+            in namespace "invoke").
+
 endmenu

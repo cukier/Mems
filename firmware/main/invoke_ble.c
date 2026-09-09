@@ -69,6 +69,7 @@ static const ble_uuid128_t s_nus_tx_uuid = BLE_UUID128_INIT(
 // --- State -----------------------------------------------------------------
 
 static uint8_t s_band_num;
+static bool s_is_gateway; // connectable + no idle scan (see Kconfig)
 static char s_ble_name[16]; // "INVOKE-xx"
 static uint8_t s_own_addr_type;
 
@@ -140,6 +141,23 @@ static uint8_t load_band_number(void) {
   return val;
 }
 
+static bool load_is_gateway(void) {
+  nvs_handle_t h;
+#ifdef CONFIG_INVOKE_GATEWAY
+  uint8_t val = 1;
+#else
+  uint8_t val = 0;
+#endif
+  if (nvs_open("invoke", NVS_READONLY, &h) == ESP_OK) {
+    uint8_t v;
+    if (nvs_get_u8(h, "gw", &v) == ESP_OK) {
+      val = v ? 1 : 0;
+    }
+    nvs_close(h);
+  }
+  return val != 0;
+}
+
 uint8_t invoke_band_number(void) { return s_band_num; }
 const char *invoke_ble_name(void) { return s_ble_name; }
 
@@ -150,8 +168,8 @@ static int adv_event_cb(struct ble_gap_event *event, void *arg);
 static void legacy_adv_start(void) {
   struct ble_gap_ext_adv_params params;
   memset(&params, 0, sizeof(params));
-  params.connectable = 1;
-  params.scannable = 1;
+  params.connectable = s_is_gateway ? 1 : 0; // only the gateway accepts connects
+  params.scannable = 1;                      // name still visible either way
   params.legacy_pdu = 1;
   params.own_addr_type = s_own_addr_type;
   params.primary_phy = BLE_HCI_LE_PHY_1M;
@@ -536,27 +554,43 @@ static int scan_event_cb(struct ble_gap_event *event, void *arg) {
   return 0;
 }
 
-static void scan_apply(bool continuous) {
+static bool s_scanning;
+
+static void scan_start(void) {
   struct ble_gap_ext_disc_params uncoded;
   memset(&uncoded, 0, sizeof(uncoded));
   uncoded.passive = 1;
-  if (continuous) {
-    uncoded.itvl = 224;
-    uncoded.window = 224;
-  } else {
-    uncoded.itvl = 480; // 300 ms
-    uncoded.window = 48; // 30 ms  (~10% duty)
-  }
+  uncoded.itvl = 224; // continuous — the only safe duty on the single C3 radio
+  uncoded.window = 224;
   ble_gap_disc_cancel();
   int rc = ble_gap_ext_disc(s_own_addr_type, 0, 0, 0 /*no dup filter*/, 0, 0,
                             &uncoded, NULL, scan_event_cb, NULL);
   if (rc != 0 && rc != BLE_HS_EALREADY) {
     ESP_LOGE(TAG, "ext_disc: %d", rc);
+    return;
+  }
+  s_scanning = true;
+}
+
+static void scan_stop(void) {
+  if (s_scanning) {
+    ble_gap_disc_cancel();
+    s_scanning = false;
   }
 }
 
+// Non-gateway bands scan continuously (never connectable -> no 0x3e). The
+// gateway scans only once connected or while a round is running; idle it stays
+// scan-free so inbound connects don't get starved (the reason-0x3e failure).
 static void scan_refresh(void) {
-  scan_apply(s_round_active || s_conn_handle != BLE_HS_CONN_HANDLE_NONE);
+  bool want = s_is_gateway
+                  ? (s_round_active || s_conn_handle != BLE_HS_CONN_HANDLE_NONE)
+                  : true;
+  if (want) {
+    scan_start();
+  } else {
+    scan_stop();
+  }
 }
 
 // --- GATT service (Nordic UART Service) --------------------------------
@@ -674,7 +708,7 @@ static void on_sync(void) {
 
   legacy_adv_start();
   mesh_adv_configure();
-  scan_apply(false); // light idle duty cycle
+  scan_refresh(); // gateway: none while idle. non-gateway: continuous.
 }
 
 static void on_reset(int reason) {
@@ -739,9 +773,6 @@ bool invoke_ble_take_question(round_q_t *out) {
 }
 
 esp_err_t invoke_ble_init(void) {
-  s_band_num = load_band_number();
-  snprintf(s_ble_name, sizeof(s_ble_name), "INVOKE-%02u", s_band_num);
-
   s_round_q_in = xQueueCreate(2, sizeof(round_q_t));
   s_bcast_q = xQueueCreate(4, sizeof(bcast_job_t));
   if (!s_round_q_in || !s_bcast_q) {
@@ -756,6 +787,10 @@ esp_err_t invoke_ble_init(void) {
   if (err != ESP_OK) {
     return err;
   }
+
+  s_band_num = load_band_number();
+  s_is_gateway = load_is_gateway();
+  snprintf(s_ble_name, sizeof(s_ble_name), "INVOKE-%02u", s_band_num);
 
   err = nimble_port_init();
   if (err != ESP_OK) {
@@ -780,7 +815,8 @@ esp_err_t invoke_ble_init(void) {
     return ESP_FAIL;
   }
 
-  ESP_LOGI(TAG, "band %u, name %s", s_band_num, s_ble_name);
+  ESP_LOGI(TAG, "band %u, name %s, gateway=%d", s_band_num, s_ble_name,
+           s_is_gateway);
 
   xTaskCreate(mesh_tx_task, "invoke_mesh_tx", 4096, NULL, 5, NULL);
   nimble_port_freertos_init(host_task);
