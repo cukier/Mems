@@ -1,0 +1,24 @@
+{
+  "name": "invoke-web-server",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Local entities API (SQLite) for the INVOKE web app — replaces the base44 hosted backend.",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "seed": "tsx src/seed-cli.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@fastify/cors": "^10.0.1",
+    "better-sqlite3": "^12.2.0",
+    "fastify": "^5.1.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.11",
+    "@types/node": "^22.9.1",
+    "tsx": "^4.19.2",
+    "typescript": "~5.6.3"
+  }
+}

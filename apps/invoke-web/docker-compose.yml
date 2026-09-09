@@ -1,0 +1,27 @@
+services:
+  api:
+    build: ./server
+    ports:
+      - "8787:8787"
+    volumes:
+      - ./server:/app
+      - /app/node_modules
+      - ./server/data:/app/data
+    environment:
+      - PORT=8787
+      - HOST=0.0.0.0
+      - DB_PATH=/app/data/invoke.db
+      - SEED=1
+
+  web:
+    build: ./web
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./web:/app
+      - /app/node_modules
+    environment:
+      - CHOKIDAR_USEPOLLING=true
+      - VITE_API_PROXY=http://api:8787
+    depends_on:
+      - api
