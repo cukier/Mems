@@ -1,4 +1,3 @@
-#include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -77,8 +76,7 @@ static uint16_t s_tx_val_handle;
 static uint16_t s_conn_handle = BLE_HS_CONN_HANDLE_NONE;
 static bool s_tx_subscribed;
 
-static bool s_round_active;   // set by invoke_ble_set_round_active()
-static bool s_scan_continuous; // current scan duty state
+static bool s_round_active; // set by invoke_ble_set_round_active()
 
 static QueueHandle_t s_round_q_in; // reassembled questions -> main loop
 static QueueHandle_t s_bcast_q;    // broadcast jobs -> mesh_tx_task
@@ -539,7 +537,6 @@ static int scan_event_cb(struct ble_gap_event *event, void *arg) {
 }
 
 static void scan_apply(bool continuous) {
-  s_scan_continuous = continuous;
   struct ble_gap_ext_disc_params uncoded;
   memset(&uncoded, 0, sizeof(uncoded));
   uncoded.passive = 1;

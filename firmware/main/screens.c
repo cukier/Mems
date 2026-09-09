@@ -47,8 +47,9 @@ void screens_wait(const char *uuid, const char *band_name) {
 // ------------------------------------------------------------ QUESTION --------
 
 static void draw_counter(int secs_left) {
-  char n[8];
-  snprintf(n, sizeof(n), "%d", secs_left < 0 ? 0 : secs_left);
+  char n[12];
+  int v = secs_left < 0 ? 0 : secs_left > 999 ? 999 : secs_left;
+  snprintf(n, sizeof(n), "%d", v);
   st7735_fill_rect(CNT_X, 0, CNT_W, 16, ST7735_BLACK);
   int16_t w = st7735_text_width(n, 2);
   st7735_draw_text((int16_t)(SCREEN_W - 2 - w), 1, n, AMBER, ST7735_BLACK, 2);
