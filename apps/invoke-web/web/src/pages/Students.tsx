@@ -1,4 +1,5 @@
 import CrudPage from '@/components/crud/CrudPage';
+import DeviceScanner from '@/components/live/DeviceScanner';
 import type { CrudField } from '@/components/crud/types';
 import useOptions from '@/hooks/useOptions';
 import type { Student } from '@/types';
@@ -24,17 +25,20 @@ export default function Students() {
     },
   ];
   return (
-    <CrudPage<Student>
-      entity="Student"
-      title="Alunos"
-      subtitle="Alunos, turmas e pulseiras"
-      fields={fields}
-      primary={(s) => s.name}
-      secondary={(s) =>
-        [s.registration && `Mat. ${s.registration}`, s.band_number && `Pulseira ${s.band_number}`]
-          .filter(Boolean)
-          .join(' · ')
-      }
-    />
+    <div className="space-y-6">
+      <DeviceScanner />
+      <CrudPage<Student>
+        entity="Student"
+        title="Alunos"
+        subtitle="Alunos, turmas e pulseiras"
+        fields={fields}
+        primary={(s) => s.name}
+        secondary={(s) =>
+          [s.registration && `Mat. ${s.registration}`, s.band_number && `Pulseira ${s.band_number}`]
+            .filter(Boolean)
+            .join(' · ')
+        }
+      />
+    </div>
   );
 }

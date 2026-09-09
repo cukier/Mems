@@ -11,6 +11,7 @@ import Performance from '@/pages/Performance';
 import Questions from '@/pages/Questions';
 import Ranking from '@/pages/Ranking';
 import Schools from '@/pages/Schools';
+import Showcase from '@/pages/Showcase';
 import Students from '@/pages/Students';
 import Teachers from '@/pages/Teachers';
 
@@ -25,6 +26,7 @@ export default function App() {
           <Route path="/performance" element={<Performance />} />
           <Route path="/ranking" element={<Ranking />} />
           <Route path="/game" element={<Game />} />
+          <Route path="/showcase" element={<Showcase />} />
           <Route path="/questions" element={<Questions />} />
           <Route path="/students" element={<Students />} />
           <Route path="/classes" element={<Classes />} />

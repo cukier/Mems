@@ -40,12 +40,15 @@ export interface MeshNodeHandle {
   send: (obj: unknown) => Promise<void>;
   /** Close the GATT connection. */
   stop: () => Promise<void>;
+  /** Band number parsed from the node's BLE name ("INVOKE-xx" -> "xx"), or null. */
+  bandNumber: string | null;
 }
 
 export interface QuestionDispatch {
   t: 'q';
   bands: string[];
-  cd: number;
+  cd: number; // countdown seconds until "VÁ"
+  to: number; // answer window (s) after "VÁ"
   s?: string;
   o: Partial<Record<Direction, string>>;
 }
@@ -206,7 +209,12 @@ export async function connectMeshNode(
     }
   };
 
-  return { send, stop };
+  // Band number comes from the BLE name ("INVOKE-xx"), which the firmware
+  // builds from the number stored in the node's NVS.
+  const m = /INVOKE-(\d+)/i.exec(device.name ?? '');
+  const bandNumber = m ? m[1] : null;
+
+  return { send, stop, bandNumber };
 }
 
 /** Back-compat (competitive mode): returns only stop(). */
@@ -226,6 +234,7 @@ export function buildDispatch(
   question: Question,
   bandNumbers: string[],
   countdown = 5,
+  timeoutSec = 8,
 ): QuestionDispatch {
   const q = question as unknown as Record<string, unknown>;
   const o: Partial<Record<Direction, string>> = {};
@@ -237,6 +246,7 @@ export function buildDispatch(
     t: 'q',
     bands: bandNumbers.map(String),
     cd: countdown,
+    to: timeoutSec,
     s: question.statement,
     o,
   };
