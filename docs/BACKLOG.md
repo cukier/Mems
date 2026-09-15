@@ -55,3 +55,44 @@ to" (e.g. cosine similarity or Euclidean distance in accel space) — replacing
 diagnostic log in `main.c` (`// TEMP: axis-mapping diagnostic`) once this
 replaces the need for it, or once the fixed-mapping fallback is separately
 retuned.
+
+## BLE pairing/connection is still too fragile
+
+**Why**: even after the v1.1.0 fix (disable NimBLE host privacy + renegotiate
+connection params on connect), pairing with the band from the console is
+still unreliable in day-to-day use — a lot of difficulty getting and keeping
+a connection, not a one-off. Symptoms seen across today's testing:
+
+- Connection attempts intermittently fail at the link layer with no host
+  event at all (`Reattempt advertising; reason: 0x3e` — connection
+  establishment failure) — first-attempt-after-boot usually works, retries
+  after that are hit or miss.
+- A connection that does establish can drop mid-session
+  (`app disconnected, reason=520` = `0x208`, supervision timeout) — after
+  which the *next* several reconnect attempts from the phone/browser fail
+  outright for a minute or more, with nothing at all on serial (not even a
+  failed-attempt log), and a full board reset (not just re-opening the
+  browser's device picker) was the only thing that reliably recovered it in
+  today's session.
+- Firmware comments already document this as a known single-radio C3
+  limitation (concurrent scan+advertising kills the link; the v1.1.0 fix
+  narrowed the window but didn't close it).
+
+**Scope for whoever picks this up**: this needs real investigation, not
+another guess-and-flash cycle — e.g. capture the actual HCI-level
+disconnect/reconnect sequence (btmon on the Android/desktop side, not just
+our own ESP_LOG lines) to see what the central is doing right before a
+connection attempt silently fails, and decide whether the fix is firmware
+(radio timing, advertising parameters), a recovery behavior (e.g.
+auto-`esp_restart()` after N consecutive failed connection attempts, since a
+reset is what unblocks it today), or both.
+
+## Chrome on Linux needs a manual flag for Web Bluetooth
+
+Not a project bug, but worth a README note (apps/invoke-console) since it
+cost real debugging time today: on desktop Linux, Chrome ships Web
+Bluetooth *disabled by default* — `navigator.bluetooth` is fully absent from
+the page, with no console error to point at it. Fix: `chrome://flags` →
+search "bluetooth" → **Web Bluetooth** (`#enable-web-bluetooth`) → Enabled →
+Relaunch. Windows/Mac/ChromeOS/Android don't need this. Add this to
+apps/invoke-console/README.md's "Run locally" section.
