@@ -52,10 +52,20 @@ void app_main(void) {
   invoke_game_init();
 
   lsm6ds3_data_t data;
+  int tick = 0;
   while (1) {
     esp_err_t err = lsm6ds3_read(&data);
     if (err == ESP_OK) {
       invoke_game_tick(&data);
+      // TEMP: axis-mapping diagnostic — printed unconditionally (not just
+      // during ANSWER) so a pose can be held and read without sending a
+      // question from the console. ~2x/s. Remove once invoke_game's
+      // direction mapping is confirmed against a real worn pose.
+      if (++tick >= 3) {
+        tick = 0;
+        ESP_LOGI(TAG, "accel_g: x=%.2f y=%.2f z=%.2f", data.accel_g.x,
+                 data.accel_g.y, data.accel_g.z);
+      }
     } else {
       ESP_LOGE(TAG, "read failed: %s", esp_err_to_name(err));
     }
