@@ -20,10 +20,12 @@ extern "C" {
 // Call once from app_main, after st7735_init().
 void invoke_game_init(void);
 
-// Called by invoke_ble.c when a Q mesh message names this node's band in
-// its bitmap. No-op if a question is already in progress (first Q wins,
-// same as the mesh layer's own dedupe intent).
-void invoke_game_on_question(uint8_t cd);
+// Called by invoke_ble.c when a Q mesh message names this node's band in its
+// bitmap. `answer_secs` is the answer window in seconds (the app's "to" field,
+// spec §2.1) — the band shows "VÁ!" + that count and captures the gesture over
+// the whole window. No-op if a question is already in progress (first Q wins,
+// same as the mesh layer's dedupe intent).
+void invoke_game_on_question(uint8_t answer_secs);
 
 // Call once per IMU sample from the main sensor loop (main.c already reads
 // at ~5Hz, which is what CAPTURE's gesture-threshold check runs at). Drives

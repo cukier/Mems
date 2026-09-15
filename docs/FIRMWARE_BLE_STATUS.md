@@ -38,6 +38,40 @@ Alinhado no repo: `docs/INVOKE_BLE_ESPECIFICACAO.md` §2.1/§3.3,
 `src/Mems/main/invoke_game.c` (`dir_to_letter`, `draw_capture_screen`),
 `apps/invoke-console/src/protocol.ts` (`DIR_TO_LETTER`).
 
+## Limite de rádio do ESP32-C3: scan + conexão não coexistem
+
+O C3 tem **um rádio**. Um scan BLE (observer, pro mesh) rodando junto com uma
+conexão GATT ativa **mata a conexão** — supervision timeout (`reason=0x208`)
+em ~1-2s, mesmo com scan a 20% de duty cycle. Confirmado em log: conexão
+segura 5s limpa, o scan liga, cai em 1s.
+
+**Consequência (diverge da spec §2.4):** o nó **para o scan enquanto está
+conectado**. Um proxy conectado é periférico puro — **não** retransmite gestos
+das outras pulseiras pro app. Regras atuais:
+
+| Estado do nó | Scan |
+|---|---|
+| Sem app conectado | liga (ouve Q/G do mesh) |
+| App conecta (`BLE_GAP_EVENT_CONNECT`) | `ble_gap_disc_cancel()` |
+| App desconecta | `start_scan()` de novo |
+
+**O que funciona hoje:** 1 pulseira + app (o proxy roda a própria rodada via
+`handle_question_command` → `invoke_game_on_question`, e manda o próprio gesto
+por `notify_gesture`).
+
+**O que não funciona:** turma com várias pulseiras + coleta de gestos em tempo
+real. O proxy conectado não ouve as bandas 2..N. Precisa de **redesenho** —
+modelo poll: o app manda a Q, **desconecta**, o proxy escaneia e bufferiza os
+gestos numa característica, o app **reconecta** depois de `to` s pra ler. Isso
+mexe no `ble.js` e no `Live.jsx` do base44.
+
+## Contagem: uma fase só (`to`)
+
+O firmware não tem mais fase de contagem pré-"VÁ". Ao receber a Q, a pulseira
+mostra **"VÁ!" + `to` contando de `to`→0** e captura o gesto durante toda a
+janela. O `cd` do JSON é ignorado pela pulseira (o base44 pode parar de mandar,
+ou manter só pra própria UI). Ver `docs/INVOKE_BLE_ESPECIFICACAO.md` §3.3.
+
 ## UUIDs canônicos (o cliente deve usar exatamente estes)
 
 | Papel | UUID |

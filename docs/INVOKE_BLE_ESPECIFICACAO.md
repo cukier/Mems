@@ -54,6 +54,9 @@ Disparo de questão (o gabarito **nunca** vai para as pulseiras):
   "t": "q",                  // tipo: disparo de questão
   "bands": ["1", "3", "7"],  // números das pulseiras da turma (string ou número)
   "cd": 5,                   // contagem regressiva em segundos até o "VÁ"
+  "to": 8,                   // tempo de resposta em segundos após o "VÁ"
+                             // (janela de captura; 1..60, default 8; o app usa
+                             // um dropdown: 5/8/10/15/20/30/45/60)
   "s": "Enunciado da questão (opcional, para o OLED)",
   "o": {                     // opções por direção do gesto
     "up": "texto opção",     // A
@@ -99,13 +102,16 @@ Transporte: **manufacturer data** (AD type `0xFF`), company ID `0xFFFF`.
 Quando uma mensagem viaja, o nó troca o advertising por ~1200 ms para
 carregá-la e depois volta ao advertising normal (nome + UUID NUS).
 
-### 3.1 Mensagem Q (questão) — 11 bytes de payload
+### 3.1 Mensagem Q (questão) — 12 bytes de payload
 
 ```
-'Q' | cd (1B) | hop (1B) | bitmap[8] (little-endian u64)
+'Q' | cd (1B) | to (1B) | hop (1B) | bitmap[8] (little-endian u64)
 ```
 
-- `cd`: contagem regressiva em segundos.
+- `cd`: **legado.** Mantido no frame (e faz parte da chave de dedupe). O
+  firmware atual **ignora** — não há mais fase de contagem separada, ver §3.3.
+- `to`: tempo de resposta em segundos (janela única de captura). Vem do campo
+  `to` do JSON do app (§2.1); 1..60, default 8.
 - `hop`: hops restantes (default inicial **2**); cada retransmissão decrementa.
 - `bitmap`: bit `n-1` = pulseira nº `n` (pulseiras 1..64). Só as pulseiras do
   bitmap participam da questão; as demais ignoram.
@@ -126,12 +132,15 @@ carregá-la e depois volta ao advertising normal (nome + UUID NUS).
 
 ### 3.3 Loop do nó (state machine)
 
-Estados com timing fixo, sincronizados pelo recebimento da mensagem Q:
+Sincronizado pelo recebimento da mensagem Q. **Uma fase só** — não há contagem
+separada antes da janela de resposta.
 
-1. **IDLE** — display em standby (`INVOKE-xx`, "aguardando pergunta").
-2. **COUNTDOWN** — exibe a contagem regressiva `cd` → `3, 2, 1`.
-3. **CAPTURE** ("VÁ!", 8 s) — janela de captura do gesto do IMU; primeiro
-   gesto válido vence. O display mostra as 4 setas rotuladas A/B/C/D:
+1. **IDLE** — display em standby (`INVOKE-xx` + endereço BLE, "aguardando
+   pergunta").
+2. **ANSWER** — ao receber a Q, o display já mostra **"VÁ!" + o tempo `to`
+   contando de `to` → 0** e as 4 setas A/B/C/D. A seta destacada segue a
+   inclinação do pulso ao vivo. O primeiro gesto válido (flick > limiar) vence
+   e encerra a janela; se `to` zerar sem gesto, registra "sem resposta".
 
    ```
              A (↑)
@@ -139,12 +148,14 @@ Estados com timing fixo, sincronizados pelo recebimento da mensagem Q:
              D (↓)
    ```
 
-4. **ACK/CONFIRM** — mostra a letra registrada A/B/C/D (~2 s) e volta a IDLE.
+3. **ACK/CONFIRM** — mostra a letra registrada A/B/C/D (~2 s) e volta a IDLE.
 
 O nó envia o gesto (`d`: `"up"|"down"|"left"|"right"`) em `mesh_send_gesture`
 assim que o captura. O mapa fixo direção↔letra está em §2.1.
-A captura é **depois** da contagem, não durante — contagem e captura são
-fases separadas.
+
+O campo `cd` do JSON/frame é ignorado pelo firmware. O app pode continuar
+mandando (ex.: para a própria UI do professor), mas o valor não afeta a
+pulseira.
 
 ---
 

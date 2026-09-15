@@ -40,6 +40,10 @@ esp_err_t invoke_ble_init(void);
 // Drives the BLE name ("INVOKE-xx") and the "b" field of gesture reports.
 uint8_t invoke_band_number(void);
 
+// This node's BLE address as "AA:BB:CC:DD:EE:FF" (a fresh random address each
+// boot). Returns "" until the NimBLE host has synced. For the standby screen.
+const char *invoke_ble_addr_str(void);
+
 // Originates a gesture (G) mesh message for this node's own band and sends
 // it immediately (no jitter — jitter only applies when *relaying* someone
 // else's message, per spec §3.2). dir must be one of 'u'/'d'/'l'/'r'.

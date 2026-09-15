@@ -32,6 +32,9 @@ static const char *TAG = "invoke_ble";
 #define MESH_INITIAL_HOP 2      // spec §3.1; §3.2 doesn't restate a value
                                  // for G, so gestures start with the same
                                  // hop budget as questions.
+#define MESH_DEFAULT_ANSWER_S 8  // capture window (s) when the app omits "to"
+#define MESH_MIN_ANSWER_S 1
+#define MESH_MAX_ANSWER_S 60
 #define MESH_TX_WINDOW_MS 1200  // spec §3: how long a mesh message occupies
                                  // the advertising payload before the node
                                  // reverts to its normal NUS/name adv.
@@ -56,8 +59,8 @@ static const char *TAG = "invoke_ble";
 // undirected-connectable the whole time either way, so the node never stops
 // being connectable just because a mesh message is in flight.
 
-// 'Q' | cd(1) | hop(1) | bitmap[8] — 11 bytes.
-#define Q_PAYLOAD_LEN 11
+// 'Q' | cd(1) | to(1) | hop(1) | bitmap[8] — 12 bytes.
+#define Q_PAYLOAD_LEN 12
 // 'G' | band(1) | dir(1) | hop(1) | seq(1) — 5 bytes.
 #define G_PAYLOAD_LEN 5
 // Company ID (2) + larger of the two payloads.
@@ -91,7 +94,8 @@ static const ble_uuid128_t s_nus_tx_uuid = BLE_UUID128_INIT(
 // --- State -----------------------------------------------------------------
 
 static uint8_t s_band_num;
-static char s_ble_name[16]; // "INVOKE-xx"
+static char s_ble_name[16];  // "INVOKE-xx"
+static char s_addr_str[18];  // "AA:BB:CC:DD:EE:FF", set on sync (empty until then)
 
 static uint16_t s_tx_val_handle;
 static uint16_t s_conn_handle = BLE_HS_CONN_HANDLE_NONE;
@@ -151,6 +155,10 @@ static uint8_t load_band_number(void) {
 
 uint8_t invoke_band_number(void) {
     return s_band_num;
+}
+
+const char *invoke_ble_addr_str(void) {
+    return s_addr_str; // "" until the NimBLE host has synced
 }
 
 // --- Dedupe tables -----------------------------------------------------
@@ -304,14 +312,15 @@ static void schedule_relay(const mesh_frame_t *frame) {
 
 // --- Frame encode/decode ------------------------------------------------
 
-static void build_q_frame(mesh_frame_t *out, uint8_t cd, uint8_t hop, uint64_t bitmap) {
+static void build_q_frame(mesh_frame_t *out, uint8_t cd, uint8_t to, uint8_t hop, uint64_t bitmap) {
     out->len = 2 + Q_PAYLOAD_LEN;
     out->data[0] = INVOKE_COMPANY_ID & 0xFF;
     out->data[1] = (INVOKE_COMPANY_ID >> 8) & 0xFF;
     out->data[2] = 'Q';
     out->data[3] = cd;
-    out->data[4] = hop;
-    memcpy(&out->data[5], &bitmap, 8); // little-endian, native on esp32c3
+    out->data[4] = to;
+    out->data[5] = hop;
+    memcpy(&out->data[6], &bitmap, 8); // little-endian, native on esp32c3
 }
 
 static void build_g_frame(mesh_frame_t *out, uint8_t band, char dir, uint8_t hop, uint8_t seq) {
@@ -364,19 +373,19 @@ static void notify_gesture(uint8_t band, char dir) {
 
 // --- Mesh receive handling ------------------------------------------------
 
-static void handle_q_frame(uint8_t cd, uint8_t hop, uint64_t bitmap) {
+static void handle_q_frame(uint8_t cd, uint8_t to, uint8_t hop, uint64_t bitmap) {
     if (q_dedupe_check_and_mark(bitmap, cd)) return;
 
-    ESP_LOGI(TAG, "Q recv: cd=%u hop=%u bitmap=0x%016" PRIx64, cd, hop, bitmap);
+    ESP_LOGI(TAG, "Q recv: cd=%u to=%u hop=%u bitmap=0x%016" PRIx64, cd, to, hop, bitmap);
 
     bool is_member = (bitmap >> (s_band_num - 1)) & 1;
     if (is_member) {
-        invoke_game_on_question(cd);
+        invoke_game_on_question(to);
     }
 
     if (hop == 0) return;
     mesh_frame_t relay;
-    build_q_frame(&relay, cd, hop - 1, bitmap);
+    build_q_frame(&relay, cd, to, hop - 1, bitmap);
     schedule_relay(&relay);
 }
 
@@ -400,10 +409,11 @@ static void handle_mfg_data(const uint8_t *data, uint8_t len) {
     uint8_t type = data[2];
     if (type == 'Q' && len == 2 + Q_PAYLOAD_LEN) {
         uint8_t cd = data[3];
-        uint8_t hop = data[4];
+        uint8_t to = data[4];
+        uint8_t hop = data[5];
         uint64_t bitmap;
-        memcpy(&bitmap, &data[5], 8);
-        handle_q_frame(cd, hop, bitmap);
+        memcpy(&bitmap, &data[6], 8);
+        handle_q_frame(cd, to, hop, bitmap);
     } else if (type == 'G' && len == 2 + G_PAYLOAD_LEN) {
         handle_g_frame(data[3], (char)data[4], data[5], data[6]);
     }
@@ -422,7 +432,9 @@ static int scan_event_cb(struct ble_gap_event *event, void *arg) {
     return 0;
 }
 
-static void start_scan(void) {
+// Currently uncalled — see on_sync(). The whole mesh-receive path hangs off
+// this; kept compiled for a future poll-model redesign.
+__attribute__((unused)) static void start_scan(void) {
     uint8_t own_addr_type;
     if (ble_hs_id_infer_auto(0, &own_addr_type) != 0) return;
 
@@ -432,19 +444,18 @@ static void start_scan(void) {
     // Duty-cycle the scan (units are 0.625ms): 20ms window every 100ms, so the
     // established GATT link keeps most of the single C3 radio.
     //
-    // This scan only ever runs *while an app is connected* (armed in
-    // gap_event_cb on CONNECT, cancelled on DISCONNECT). A continuous scan
-    // alongside connectable advertising starves the connection-establishment
-    // window on the single-antenna C3: inbound connects fail with reason 0x3e
-    // (BLE_ERR_CONN_ESTABLISHMENT) before service discovery — both Chrome and
-    // nRF Connect just spin on "connecting" and drop. Keeping the radio
-    // scan-free until the link is up fixes that; once connected, the node still
-    // relays mesh traffic to the app as spec §2.4 requires.
+    // Duty cycle so the scan is a smaller share of the single C3 radio while
+    // the node is advertising connectably. The scan runs ONLY while no app is
+    // connected — it is cancelled on BLE_GAP_EVENT_CONNECT and restarted on
+    // DISCONNECT. A scan concurrent with an active GATT link kills that link
+    // on this chip (supervision timeout, reason 0x208, within ~2s even at 20%
+    // duty), so a connected proxy is a pure peripheral and does not relay mesh
+    // traffic — a known single-radio limitation vs. spec §2.4.
     disc_params.itvl = 160;
     disc_params.window = 32;
 
     int rc = ble_gap_disc(own_addr_type, BLE_HS_FOREVER, &disc_params, scan_event_cb, NULL);
-    if (rc != 0) {
+    if (rc != 0 && rc != BLE_HS_EALREADY) {
         ESP_LOGE(TAG, "ble_gap_disc failed: %d", rc);
     }
 }
@@ -479,6 +490,16 @@ static void handle_question_command(const cJSON *root) {
     uint8_t cd = (uint8_t)cd_field->valueint;
     uint64_t bitmap = parse_bands_bitmap(bands_field);
 
+    // "to" = answer/capture window in seconds (spec §2.1). Optional; clamp to a
+    // sane range and fall back to the default when absent or out of bounds.
+    const cJSON *to_field = cJSON_GetObjectItemCaseSensitive(root, "to");
+    uint8_t to = MESH_DEFAULT_ANSWER_S;
+    if (cJSON_IsNumber(to_field) &&
+        to_field->valueint >= MESH_MIN_ANSWER_S &&
+        to_field->valueint <= MESH_MAX_ANSWER_S) {
+        to = (uint8_t)to_field->valueint;
+    }
+
     // Originating a question is not itself a "relay", so it goes straight
     // to the send queue — but it still needs to be marked seen, otherwise
     // this same node would try to re-relay it the moment it hears its own
@@ -486,7 +507,7 @@ static void handle_question_command(const cJSON *root) {
     q_dedupe_check_and_mark(bitmap, cd);
 
     mesh_frame_t frame;
-    build_q_frame(&frame, cd, MESH_INITIAL_HOP, bitmap);
+    build_q_frame(&frame, cd, to, MESH_INITIAL_HOP, bitmap);
     enqueue_mesh_frame(&frame);
 
     // The proxy node is also a band: if it's in the bitmap it runs the round
@@ -495,10 +516,10 @@ static void handle_question_command(const cJSON *root) {
     // own broadcast back is a no-op) — a single-band setup would capture
     // nothing. Mirrors handle_q_frame()'s membership check for mesh-received Qs.
     if (s_band_num >= 1 && ((bitmap >> (s_band_num - 1)) & 1)) {
-        invoke_game_on_question(cd);
+        invoke_game_on_question(to);
     }
 
-    ESP_LOGI(TAG, "Q send: cd=%u bitmap=0x%016" PRIx64, cd, bitmap);
+    ESP_LOGI(TAG, "Q send: cd=%u to=%u bitmap=0x%016" PRIx64, cd, to, bitmap);
 }
 
 static int rx_chr_access_cb(uint16_t conn_handle, uint16_t attr_handle,
@@ -570,23 +591,42 @@ static int gap_event_cb(struct ble_gap_event *event, void *arg) {
             if (event->connect.status == 0) {
                 s_conn_handle = event->connect.conn_handle;
                 ESP_LOGI(TAG, "app connected, conn_handle=%d", s_conn_handle);
-                // Now this node is the proxy: start the mesh scan so gestures
-                // from the other bands can be relayed to the app (spec §2.4).
-                // The scan is off until here — see start_scan() for why.
-                start_scan();
+                ble_gap_disc_cancel(); // defensive: no scan should be running
+                // Android opens the link at a 7.5-15ms interval with a short
+                // supervision timeout; one RF/CPU blip on the single-core C3
+                // then loses enough events to trip reason 0x208. Ask for a
+                // slower interval and a longer timeout — fewer events to miss,
+                // more slack. The central may reject; the link stays up either
+                // way.
+                struct ble_gap_upd_params up = {
+                    .itvl_min = 24,             // 30 ms
+                    .itvl_max = 40,             // 50 ms
+                    .latency = 0,
+                    .supervision_timeout = 600, // 6 s
+                };
+                int rc = ble_gap_update_params(s_conn_handle, &up);
+                if (rc != 0) ESP_LOGW(TAG, "conn param update req rc=%d", rc);
             } else {
+                ESP_LOGW(TAG, "connect attempt failed, status=%d", event->connect.status);
                 set_adv_normal(); // connection attempt failed, keep advertising
             }
             return 0;
+
+        case BLE_GAP_EVENT_CONN_UPDATE: {
+            struct ble_gap_conn_desc d;
+            if (ble_gap_conn_find(event->conn_update.conn_handle, &d) == 0) {
+                ESP_LOGI(TAG, "conn params: itvl=%d latency=%d timeout=%d (status=%d)",
+                         d.conn_itvl, d.conn_latency, d.supervision_timeout,
+                         event->conn_update.status);
+            }
+            return 0;
+        }
 
         case BLE_GAP_EVENT_DISCONNECT:
             ESP_LOGI(TAG, "app disconnected, reason=%d", event->disconnect.reason);
             s_conn_handle = BLE_HS_CONN_HANDLE_NONE;
             s_tx_subscribed = false;
-            ble_gap_disc_cancel(); // stop the mesh scan: no app to relay to, and
-                                   // a scan-free radio keeps us reliably
-                                   // connectable (see start_scan())
-            set_adv_normal();      // spec §2 rule 5: return to normal advertising
+            set_adv_normal(); // spec §2 rule 5: return to normal advertising
             return 0;
 
         case BLE_GAP_EVENT_SUBSCRIBE:
@@ -628,16 +668,22 @@ static void on_sync(void) {
     uint8_t own_addr_type, addr_val[6] = {0};
     if (ble_hs_id_infer_auto(0, &own_addr_type) == 0 &&
         ble_hs_id_copy_addr(own_addr_type, addr_val, NULL) == 0) {
-        ESP_LOGI(TAG, "BLE address (type=%d, random per boot): "
-                       "%02x:%02x:%02x:%02x:%02x:%02x",
-                 own_addr_type, addr_val[5], addr_val[4], addr_val[3],
+        snprintf(s_addr_str, sizeof(s_addr_str),
+                 "%02X:%02X:%02X:%02X:%02X:%02X",
+                 addr_val[5], addr_val[4], addr_val[3],
                  addr_val[2], addr_val[1], addr_val[0]);
+        ESP_LOGI(TAG, "BLE address (type=%d, random per boot): %s",
+                 own_addr_type, s_addr_str);
     }
 
-    // No scan here on purpose — see start_scan(). It is armed on connect and
-    // cancelled on disconnect, so an unconnected node advertises at full rate
-    // and is reliably connectable.
     set_adv_normal();
+    // No scan. On the single-antenna C3 a running scan breaks BLE either way:
+    // concurrent with connectable advertising it fails inbound connects with
+    // reason 0x3e; concurrent with an active link it supervision-times-out
+    // (0x208). And a connected proxy can't relay anyway, so mesh RX has no
+    // real use here. The node is a pure peripheral + broadcaster. The RX/relay
+    // path (start_scan, handle_q_frame, ...) is kept compiled for a future
+    // poll-model redesign — see docs/FIRMWARE_BLE_STATUS.md.
 }
 
 static void on_reset(int reason) {

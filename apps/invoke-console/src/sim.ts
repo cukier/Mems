@@ -30,10 +30,11 @@ export class SimTransport implements Transport {
   async sendQuestion(dispatch: QuestionDispatch): Promise<void> {
     this.ev.onLog('tx', JSON.stringify(dispatch));
     const delayBase = dispatch.cd * 1000;
+    const windowMs = Math.max(300, dispatch.to * 1000);
     for (const band of dispatch.bands) {
       // ~15% of bands "miss" the capture window
       if (Math.random() < 0.15) continue;
-      const jitter = 400 + Math.random() * 3000;
+      const jitter = 300 + Math.random() * (windowMs - 300);
       this.schedule(delayBase + jitter, () => {
         const dir = DIRECTIONS[Math.floor(Math.random() * DIRECTIONS.length)] as Direction;
         const raw = JSON.stringify({ b: band, d: dir });

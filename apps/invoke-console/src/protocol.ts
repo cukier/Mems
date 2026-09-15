@@ -28,6 +28,7 @@ export interface QuestionDispatch {
   t: 'q';
   bands: string[]; // band numbers 1..64; only these bands run the round
   cd: number; // countdown seconds until "VÁ"
+  to: number; // answer/capture window in seconds after "VÁ" (teacher-set)
   s?: string; // statement, for the node's OLED
   o?: Partial<Record<Direction, string>>; // option text per gesture direction
 }
@@ -41,6 +42,7 @@ export interface Gesture {
 export interface QuestionInput {
   statement: string;
   countdown: number;
+  answerSecs: number; // CAPTURE window after "VÁ"
   bandNumbers: string[];
   options: Record<Direction, string>; // text per direction ('' = unused)
   correct: Direction | null; // local only — never sent
@@ -56,6 +58,7 @@ export function buildDispatch(q: QuestionInput): QuestionDispatch {
     t: 'q',
     bands: q.bandNumbers.map(String),
     cd: q.countdown,
+    to: q.answerSecs,
     s: q.statement || undefined,
     o: Object.keys(o).length ? o : undefined,
   };
