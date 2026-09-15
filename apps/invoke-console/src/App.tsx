@@ -30,9 +30,11 @@ export function App() {
   const [useSim, setUseSim] = useState(!bleSupported());
   const [log, setLog] = useState<LogLine[]>([]);
   const [gestures, setGestures] = useState<GestureRow[]>([]);
+  const [copyLabel, setCopyLabel] = useState('copiar');
 
   const [bandsText, setBandsText] = useState('1,2,3,4,5');
   const [countdown, setCountdown] = useState(5);
+  const [answerSecs, setAnswerSecs] = useState(8);
   const [statement, setStatement] = useState('Quanto é 12 x 8?');
   const [options, setOptions] = useState<Record<Direction, string>>({
     up: '86',
@@ -49,6 +51,20 @@ export function App() {
     setLog((prev) => [...prev.slice(-299), { t: Date.now(), level, msg }]);
   }, []);
 
+  const copyLog = useCallback(async () => {
+    const text = log
+      .map((l) => `${new Date(l.t).toLocaleTimeString()} ${l.level.toUpperCase()} ${l.msg}`)
+      .join('\n');
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopyLabel('copiado!');
+    } catch {
+      setCopyLabel('falhou');
+    } finally {
+      setTimeout(() => setCopyLabel('copiar'), 1500);
+    }
+  }, [log]);
+
   const bandNumbers = useMemo(
     () =>
       bandsText
@@ -62,11 +78,12 @@ export function App() {
     (): QuestionInput => ({
       statement,
       countdown,
+      answerSecs,
       bandNumbers,
       options,
       correct,
     }),
-    [statement, countdown, bandNumbers, options, correct],
+    [statement, countdown, answerSecs, bandNumbers, options, correct],
   );
 
   const events: TransportEvents = useMemo(
@@ -184,6 +201,16 @@ export function App() {
           />
         </label>
         <label>
+          Tempo de resposta
+          <select value={answerSecs} onChange={(e) => setAnswerSecs(Number(e.target.value))}>
+            {[5, 8, 10, 15, 20, 30, 45, 60].map((s) => (
+              <option key={s} value={s}>
+                {s}s
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
           Enunciado
           <input value={statement} onChange={(e) => setStatement(e.target.value)} />
         </label>
@@ -231,9 +258,14 @@ export function App() {
       <section className="card log-card">
         <h2>
           Log BLE
-          <button className="ghost small" onClick={() => setLog([])}>
-            limpar
-          </button>
+          <span className="h2-actions">
+            <button className="ghost small" onClick={copyLog} disabled={log.length === 0}>
+              {copyLabel}
+            </button>
+            <button className="ghost small" onClick={() => setLog([])}>
+              limpar
+            </button>
+          </span>
         </h2>
         <div className="log">
           {log.map((l, i) => (

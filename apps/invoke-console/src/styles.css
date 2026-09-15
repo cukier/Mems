@@ -60,6 +60,11 @@ h2 {
   justify-content: space-between;
   gap: 8px;
 }
+.h2-actions {
+  display: flex;
+  gap: 6px;
+}
+
 h2 small {
   color: var(--muted);
   font-weight: 400;
@@ -117,7 +122,8 @@ label small {
   color: var(--muted);
 }
 
-input {
+input,
+select {
   background: var(--card-2);
   border: 1px solid var(--line);
   border-radius: 8px;
