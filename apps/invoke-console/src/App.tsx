@@ -33,7 +33,6 @@ export function App() {
   const [copyLabel, setCopyLabel] = useState('copiar');
 
   const [bandsText, setBandsText] = useState('1,2,3,4,5');
-  const [countdown, setCountdown] = useState(5);
   const [answerSecs, setAnswerSecs] = useState(8);
   const [statement, setStatement] = useState('Quanto é 12 x 8?');
   const [options, setOptions] = useState<Record<Direction, string>>({
@@ -77,13 +76,12 @@ export function App() {
   const currentQuestion = useCallback(
     (): QuestionInput => ({
       statement,
-      countdown,
       answerSecs,
       bandNumbers,
       options,
       correct,
     }),
-    [statement, countdown, answerSecs, bandNumbers, options, correct],
+    [statement, answerSecs, bandNumbers, options, correct],
   );
 
   const events: TransportEvents = useMemo(
@@ -189,16 +187,6 @@ export function App() {
           Pulseiras
           <input value={bandsText} onChange={(e) => setBandsText(e.target.value)} />
           <small>{bandNumbers.length} pulseira(s)</small>
-        </label>
-        <label>
-          Contagem regressiva (s)
-          <input
-            type="number"
-            min={1}
-            max={60}
-            value={countdown}
-            onChange={(e) => setCountdown(Math.max(1, Math.min(60, Number(e.target.value) || 1)))}
-          />
         </label>
         <label>
           Tempo de resposta

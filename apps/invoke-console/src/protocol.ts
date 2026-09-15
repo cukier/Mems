@@ -27,8 +27,9 @@ export const DIR_TO_LETTER: Record<Direction, string> = {
 export interface QuestionDispatch {
   t: 'q';
   bands: string[]; // band numbers 1..64; only these bands run the round
-  cd: number; // countdown seconds until "VÁ"
-  to: number; // answer/capture window in seconds after "VÁ" (teacher-set)
+  cd: number; // legacy — firmware ignores it for gameplay; kept only because
+              // it's part of the mesh dedupe key (bitmap ^ cd), see buildDispatch
+  to: number; // the time the student has to answer (teacher-set; spec §3.3's only phase)
   s?: string; // statement, for the node's OLED
   o?: Partial<Record<Direction, string>>; // option text per gesture direction
 }
@@ -41,8 +42,7 @@ export interface Gesture {
 
 export interface QuestionInput {
   statement: string;
-  countdown: number;
-  answerSecs: number; // CAPTURE window after "VÁ"
+  answerSecs: number; // the time the student has to answer (spec §3.3's only phase)
   bandNumbers: string[];
   options: Record<Direction, string>; // text per direction ('' = unused)
   correct: Direction | null; // local only — never sent
@@ -57,7 +57,12 @@ export function buildDispatch(q: QuestionInput): QuestionDispatch {
   return {
     t: 'q',
     bands: q.bandNumbers.map(String),
-    cd: q.countdown,
+    // cd is legacy — the firmware doesn't run a separate countdown phase (see
+    // the doc comment on QuestionDispatch.cd) — but it's still part of the
+    // mesh dedupe key (bitmap ^ cd), so it needs to vary between questions
+    // rather than collide if two distinct questions to the same bands land
+    // within the 3s dedupe window. Not user-facing; just a random byte.
+    cd: Math.floor(Math.random() * 256),
     to: q.answerSecs,
     s: q.statement || undefined,
     o: Object.keys(o).length ? o : undefined,

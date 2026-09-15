@@ -14,29 +14,22 @@ static const char *TAG = "invoke_game";
 // §3.3's timing/detection details the spec leaves unspecified are called
 // out explicitly below rather than silently guessed at — this has never
 // been tried against a real gesture, so treat the constants (especially
-// GESTURE_THRESHOLD_G and which axis maps to which direction) as a first
-// cut to tune once it's on an actual wrist.
+// TILT_DEADZONE_G and which axis maps to which direction) as a first cut
+// to tune once it's on an actual wrist.
+//
+// The answer is *not* a flick detected mid-window: the student tilts their
+// wrist toward an option, sees the live preview on screen the whole time,
+// and whatever direction they're holding when the answer window closes is
+// what gets sent. This also means the full "to" duration always elapses —
+// there is nothing that can end the round early.
 
 #define DEFAULT_ANSWER_S 8              // spec §3.3 default; the Q's "to" overrides
 #define MIN_ANSWER_S 1
 #define MAX_ANSWER_S 60
 #define ACK_WINDOW_US (2 * 1000 * 1000) // spec §3.3: ~2s ack display
 
-// Accel delta (g) from the CAPTURE-start baseline that counts as a
-// deliberate flick rather than hand jitter. Untuned guess.
-#define GESTURE_THRESHOLD_G 0.5f
-
-// Consecutive 200ms ticks (see app_main's poll loop) the same direction must
-// stay over threshold before it commits as the gesture. A single-tick spike
-// (bench bump, cable tug, the board simply not resting flat) reads as a
-// real-looking delta for one sample and then relaxes back; a deliberate
-// flick holds. Observed on the bench: isolated one-tick triggers with no one
-// touching the board — this is the fix for that, not a threshold change.
-#define GESTURE_DEBOUNCE_TICKS 2
-
-// The answer screen previews which answer the band is currently tilted toward.
-// Smaller than GESTURE_THRESHOLD_G so the highlight tracks the wrist well
-// before a tilt would count as the committed gesture.
+// Accel delta (g) from flat, on either axis, that counts as "tilted toward
+// that answer" rather than the band just resting/jittering. Untuned guess.
 #define TILT_DEADZONE_G 0.18f
 
 // Answer screen layout (128x128).
@@ -54,10 +47,8 @@ static int64_t s_next_event_us;   // deadline for the current phase
 static int64_t s_sec_tick_us;     // next 1s number decrement in GAME_ANSWER
 static int s_secs_left;            // seconds shown on the "VÁ!" screen
 static bool s_answer_pending;      // GAME_ANSWER just entered; first tick captures the baseline
-static char s_aim_dir;             // answer the wrist is tilted toward (live preview)
-static char s_pending_dir;         // direction over threshold on the last tick (debounce)
-static int s_pending_ticks;        // consecutive ticks s_pending_dir has held
-static lsm6ds3_axes_t s_answer_baseline;
+static char s_aim_dir;             // answer the wrist is tilted toward — also
+                                    // what gets sent when the window closes
 static uint8_t s_answer_secs = DEFAULT_ANSWER_S; // window for the current round (Q "to")
 static char s_idle_addr[18]; // BLE address the standby screen currently shows ("" = needs redraw)
 
@@ -196,32 +187,10 @@ static void draw_ack_screen(char dir) {
 
 // --- Gesture detection ----------------------------------------------------
 
-// First axis (X then Y) to cross the threshold since the answer window opened
-// wins; sign gives the direction. Z is ignored (assumed to stay ~gravity —
-// this is a wrist flick, not a flip).
-static char detect_gesture(const lsm6ds3_data_t *imu) {
-    float dx = imu->accel_g.x - s_answer_baseline.x;
-    float dy = imu->accel_g.y - s_answer_baseline.y;
-
-    if (fabsf(dx) >= fabsf(dy)) {
-        if (fabsf(dx) >= GESTURE_THRESHOLD_G) {
-            ESP_LOGI(TAG, "gesture trigger: dx=%.2f dy=%.2f baseline=(%.2f,%.2f)",
-                     dx, dy, s_answer_baseline.x, s_answer_baseline.y);
-            return dx > 0 ? 'r' : 'l';
-        }
-    } else {
-        if (fabsf(dy) >= GESTURE_THRESHOLD_G) {
-            ESP_LOGI(TAG, "gesture trigger: dx=%.2f dy=%.2f baseline=(%.2f,%.2f)",
-                     dx, dy, s_answer_baseline.x, s_answer_baseline.y);
-            return dy > 0 ? 'u' : 'd';
-        }
-    }
-    return 0;
-}
-
 // Which answer the band is currently tilted toward, from a flat/neutral
-// reference (no captured baseline) with a dead zone. Same axis convention as
-// detect_gesture, so the live preview points where a gesture would land.
+// (gravity-on-Z) reference, with a dead zone. This is the only detector:
+// the wrist's position at the moment the window closes is the answer, so
+// there is no separate flick/threshold check to land on Z.
 static char tilt_direction(const lsm6ds3_data_t *imu) {
     float ax = imu->accel_g.x;
     float ay = imu->accel_g.y;
@@ -232,13 +201,11 @@ static char tilt_direction(const lsm6ds3_data_t *imu) {
 
 // --- State machine ---------------------------------------------------------
 
-// First tick of GAME_ANSWER: captures the IMU baseline (invoke_game_on_question
-// has no sample) and opens the window.
+// First tick of GAME_ANSWER: opens the window. invoke_game_on_question() has
+// no IMU sample of its own, so the actual open happens here on the next tick.
 static void enter_answer(const lsm6ds3_data_t *imu) {
-    s_answer_baseline = imu->accel_g;
+    (void)imu; // no baseline to capture anymore — tilt_direction() is absolute
     s_aim_dir = 0;
-    s_pending_dir = 0;
-    s_pending_ticks = 0;
     s_secs_left = s_answer_secs;
     s_answer_pending = false;
     int64_t now = esp_timer_get_time();
@@ -294,22 +261,13 @@ void invoke_game_tick(const lsm6ds3_data_t *imu) {
 
         case GAME_ANSWER: {
             if (s_answer_pending) {
-                enter_answer(imu); // first tick: capture baseline, open the window
+                enter_answer(imu); // first tick: open the window
                 return;
             }
-            char dir = detect_gesture(imu);
-            if (dir && dir == s_pending_dir) {
-                s_pending_ticks++;
-            } else {
-                s_pending_dir = dir;
-                s_pending_ticks = dir ? 1 : 0;
-            }
-            if (dir && s_pending_ticks >= GESTURE_DEBOUNCE_TICKS) {
-                invoke_mesh_send_gesture(dir);
-                enter_ack(dir);
-                return;
-            }
-            // Live aim preview: highlight the arrow the wrist points at.
+            // Live aim preview: highlight the arrow the wrist is tilted
+            // toward. This *is* the answer — there's no separate flick to
+            // detect, so the full window always runs; whatever direction is
+            // held (or none) when it closes is what gets sent below.
             char aim = tilt_direction(imu);
             if (aim != s_aim_dir) {
                 s_aim_dir = aim;
@@ -322,7 +280,8 @@ void invoke_game_tick(const lsm6ds3_data_t *imu) {
                 s_sec_tick_us += 1000000;
             }
             if (now >= s_next_event_us) {
-                enter_ack(0); // window closed with no gesture
+                if (s_aim_dir) invoke_mesh_send_gesture(s_aim_dir);
+                enter_ack(s_aim_dir); // "" (0) shows NO ANSWER
             }
             return;
         }

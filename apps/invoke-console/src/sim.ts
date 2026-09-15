@@ -1,6 +1,6 @@
 // Simulator transport: exercises the whole UI with no hardware. It accepts a
-// question dispatch, waits out the countdown, then emits one random gesture per
-// band listed in `bands` (plus the occasional miss), so the gesture list and
+// question dispatch, waits out the answer window, then emits one random gesture
+// per band listed in `bands` (plus the occasional miss), so the gesture list and
 // scoring can be developed offline.
 
 import { DIRECTIONS, type Direction, type QuestionDispatch } from './protocol';

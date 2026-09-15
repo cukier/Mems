@@ -139,8 +139,10 @@ separada antes da janela de resposta.
    pergunta").
 2. **ANSWER** — ao receber a Q, o display já mostra **"VÁ!" + o tempo `to`
    contando de `to` → 0** e as 4 setas A/B/C/D. A seta destacada segue a
-   inclinação do pulso ao vivo. O primeiro gesto válido (flick > limiar) vence
-   e encerra a janela; se `to` zerar sem gesto, registra "sem resposta".
+   inclinação do pulso ao vivo — essa é a prévia da resposta, não um gesto
+   separado. `to` sempre conta até 0 (nada encerra a janela antes); a resposta
+   registrada é a direção em que o pulso está inclinado no instante em que o
+   tempo acaba (ausência de inclinação clara = "sem resposta").
 
    ```
              A (↑)
