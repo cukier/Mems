@@ -48,11 +48,20 @@ export interface QuestionInput {
   correct: Direction | null; // local only — never sent
 }
 
+// The band's screen font is uppercase-only ASCII (no accented Latin letters —
+// see st7735.c's font_lookup) — an accented char just renders as a blank, so
+// strip diacritics before anything reaches the wire rather than have "É" or
+// "ção" show up with holes in it on the actual hardware.
+const COMBINING_MARKS = /[\u0300-\u036f]/g;
+function stripAccents(s: string): string {
+  return s.normalize('NFD').replace(COMBINING_MARKS, '');
+}
+
 export function buildDispatch(q: QuestionInput): QuestionDispatch {
   const o: Partial<Record<Direction, string>> = {};
   for (const dir of DIRECTIONS) {
     const text = q.options[dir]?.trim();
-    if (text) o[dir] = text;
+    if (text) o[dir] = stripAccents(text);
   }
   return {
     t: 'q',
@@ -64,7 +73,7 @@ export function buildDispatch(q: QuestionInput): QuestionDispatch {
     // within the 3s dedupe window. Not user-facing; just a random byte.
     cd: Math.floor(Math.random() * 256),
     to: q.answerSecs,
-    s: q.statement || undefined,
+    s: q.statement ? stripAccents(q.statement) : undefined,
     o: Object.keys(o).length ? o : undefined,
   };
 }

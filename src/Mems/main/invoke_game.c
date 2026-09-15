@@ -32,24 +32,32 @@ static const char *TAG = "invoke_game";
 // that answer" rather than the band just resting/jittering. Untuned guess.
 #define TILT_DEADZONE_G 0.18f
 
-// Answer screen layout (128x128).
-#define ANS_NUM_Y 20  // big seconds-left number
-#define GRID_Y 56     // arrow grid starts here
+// Answer screen layout (128x128): statement (up to 3 lines, scale 1) → the
+// countdown number → the arrow grid.
+#define STMT_Y0 2
+#define STMT_LINE_H 8
+#define STMT_MAX_LINES 3
+#define NUM_Y (STMT_Y0 + STMT_MAX_LINES * STMT_LINE_H + 2)
+#define NUM_H 16
+#define GRID_Y 56 // arrow grid starts here
+
+#define MAX_STATEMENT_LEN 48
 
 typedef enum {
     GAME_IDLE,
-    GAME_ANSWER,  // single phase: "VÁ!" + seconds counting down + gesture capture
+    GAME_ANSWER,  // single phase: statement + seconds counting down + gesture capture
     GAME_ACK,
 } game_state_t;
 
 static game_state_t s_state = GAME_IDLE;
 static int64_t s_next_event_us;   // deadline for the current phase
 static int64_t s_sec_tick_us;     // next 1s number decrement in GAME_ANSWER
-static int s_secs_left;            // seconds shown on the "VÁ!" screen
+static int s_secs_left;            // seconds shown on the answer screen
 static bool s_answer_pending;      // GAME_ANSWER just entered; first tick captures the baseline
 static char s_aim_dir;             // answer the wrist is tilted toward — also
                                     // what gets sent when the window closes
 static uint8_t s_answer_secs = DEFAULT_ANSWER_S; // window for the current round (Q "to")
+static char s_statement[MAX_STATEMENT_LEN + 1];  // current round's question text ("" = none)
 static char s_idle_addr[18]; // BLE address the standby screen currently shows ("" = needs redraw)
 
 // --- TFT screens ---------------------------------------------------------
@@ -68,7 +76,7 @@ static void draw_idle_screen(void) {
     st7735_fill_screen(ST7735_BLACK);
     char line[24];
 
-    draw_centered(8, "PRONTA", ST7735_GREEN, 1);
+    draw_centered(8, "PRONTA", ST7735_AMBER, 1);
 
     snprintf(line, sizeof(line), "INVOKE-%02u", invoke_band_number());
     draw_centered(30, line, ST7735_WHITE, 2);
@@ -97,11 +105,17 @@ static char dir_to_letter(char dir) {
 }
 
 // Small filled arrow (~24x24) centred at (cx, cy), pointing dir ('u'/'d'/'l'/'r').
-static void draw_arrow(char dir, int16_t cx, int16_t cy, uint16_t color) {
-    const int L = 12;   // half-extent along the pointing axis
-    const int SW = 5;   // stem half-width
-    const int HL = 9;   // head length
-    const int HW = 10;  // head half-width at its base
+// `grow` grows (or, negative, shrinks) every dimension by the same amount —
+// L and HL move together so the stem segment (L-HL) stays constant — which
+// is what draw_answer_grid uses to fake a glow (a dim, grown copy behind the
+// full-size bright one) and a hollow outline (a shrunk black copy on top of
+// a full-size dim one) without the driver needing real blur/stroke support.
+// Only called with |grow| <= 2 here, so no clamping against degenerate sizes.
+static void draw_arrow(char dir, int16_t cx, int16_t cy, uint16_t color, int grow) {
+    const int L = 12 + grow;   // half-extent along the pointing axis
+    const int SW = 5 + grow;   // stem half-width
+    const int HL = 9 + grow;   // head length
+    const int HW = 10 + grow;  // head half-width at its base
     switch (dir) {
         case 'u':
             st7735_fill_rect(cx - SW, cy - L + HL, 2 * SW + 1, L - HL, color);
@@ -135,8 +149,10 @@ static void draw_arrow(char dir, int16_t cx, int16_t cy, uint16_t color) {
 }
 
 // The four answer arrows in the fixed layout, the one matching `active`
-// highlighted. Clears only its own region so it can be redrawn every tick
-// without flicker (the countdown number and title stay put).
+// highlighted amber-glowing (a dim grown copy behind a bright full-size one);
+// the other three are hollow amber outlines (a dim full-size copy with a
+// black shrunk one punched on top). Clears only its own region so it can be
+// redrawn every tick without flicker (the statement and countdown stay put).
 static void draw_answer_grid(char active) {
     static const struct {
         char dir;
@@ -147,42 +163,88 @@ static void draw_answer_grid(char active) {
     st7735_fill_rect(0, GRID_Y, ST7735_WIDTH, ST7735_HEIGHT - GRID_Y, ST7735_BLACK);
     for (int i = 0; i < 4; i++) {
         bool on = (active == cells[i].dir);
-        uint16_t col = on ? ST7735_YELLOW : ST7735_GRAY;
-        draw_arrow(cells[i].dir, cells[i].cx, cells[i].cy, col);
+        uint16_t letter_fg, letter_bg;
+        if (on) {
+            draw_arrow(cells[i].dir, cells[i].cx, cells[i].cy, ST7735_AMBER_DIM, 2);
+            draw_arrow(cells[i].dir, cells[i].cx, cells[i].cy, ST7735_AMBER, 0);
+            letter_fg = ST7735_BLACK;
+            letter_bg = ST7735_AMBER;
+        } else {
+            draw_arrow(cells[i].dir, cells[i].cx, cells[i].cy, ST7735_AMBER_DIM, 0);
+            draw_arrow(cells[i].dir, cells[i].cx, cells[i].cy, ST7735_BLACK, -2);
+            letter_fg = ST7735_AMBER_DIM;
+            letter_bg = ST7735_BLACK;
+        }
         char lbl[2] = {dir_to_letter(cells[i].dir), '\0'};
-        st7735_draw_text(cells[i].cx - 6, cells[i].cy - 8, lbl,
-                         on ? ST7735_BLACK : ST7735_WHITE, col, 2);
+        st7735_draw_text(cells[i].cx - 6, cells[i].cy - 8, lbl, letter_fg, letter_bg, 2);
+    }
+}
+
+// Greedy word-wrap into up to STMT_MAX_LINES centered lines at scale 1 — the
+// only text on this screen that isn't a single short fixed string, so it's
+// the only one that needs it. A statement too long to fit is silently
+// truncated to what does; there's no smaller scale and no scrolling.
+static void draw_statement(const char *stmt) {
+    if (!stmt || !stmt[0]) return;
+    const int max_chars = ST7735_WIDTH / 6; // st7735's per-char advance at scale 1 (5px glyph + 1px gap)
+    char line[32];
+    int line_len = 0;
+    int lines_drawn = 0;
+    const char *word = stmt;
+    while (*word && lines_drawn < STMT_MAX_LINES) {
+        const char *sp = strchr(word, ' ');
+        int wlen = sp ? (int)(sp - word) : (int)strlen(word);
+        if (wlen > max_chars) wlen = max_chars; // one word alone is a whole line
+        bool fits = line_len == 0 || line_len + 1 + wlen <= max_chars;
+        if (!fits) {
+            draw_centered(STMT_Y0 + lines_drawn * STMT_LINE_H, line, ST7735_WHITE, 1);
+            lines_drawn++;
+            line_len = 0;
+            if (lines_drawn >= STMT_MAX_LINES) break;
+        }
+        if (line_len > 0 && line_len < (int)sizeof(line) - 1) line[line_len++] = ' ';
+        int copy = wlen;
+        if (line_len + copy > (int)sizeof(line) - 1) copy = (int)sizeof(line) - 1 - line_len;
+        memcpy(line + line_len, word, (size_t)copy);
+        line_len += copy;
+        line[line_len] = '\0';
+        word += wlen;
+        while (*word == ' ') word++;
+    }
+    if (lines_drawn < STMT_MAX_LINES && line_len > 0) {
+        draw_centered(STMT_Y0 + lines_drawn * STMT_LINE_H, line, ST7735_WHITE, 1);
     }
 }
 
 // Redraws just the seconds-left number on the answer screen (own region, so it
-// can tick every second without disturbing "VÁ!" or the arrow grid).
+// can tick every second without disturbing the statement or the arrow grid).
 static void draw_answer_secs(int remaining) {
-    st7735_fill_rect(0, ANS_NUM_Y, ST7735_WIDTH, GRID_Y - ANS_NUM_Y, ST7735_BLACK);
+    st7735_fill_rect(0, NUM_Y, ST7735_WIDTH, NUM_H, ST7735_BLACK);
     char n[4];
     snprintf(n, sizeof(n), "%d", remaining);
-    draw_centered(ANS_NUM_Y, n, ST7735_YELLOW, 4);
+    draw_centered(NUM_Y, n, ST7735_AMBER, 2);
 }
 
-// The whole round on one screen: "VÁ!" + the chosen answer time counting down
-// + the A/B/C/D arrow grid, which highlights the answer the wrist is aimed at,
-// live, until a flick commits it (or the count hits zero).
+// The whole round on one screen: the question statement, the chosen answer
+// time counting down, and the A/B/C/D arrow grid — which glows on whichever
+// answer the wrist is currently aimed at, live, for the entire window (see
+// the file header comment: there's no flick that ends it early).
 static void draw_answer_screen(void) {
     st7735_fill_screen(ST7735_BLACK);
-    draw_centered(2, "VA!", ST7735_GREEN, 2);
+    draw_statement(s_statement);
     draw_answer_secs(s_secs_left);
     draw_answer_grid(s_aim_dir);
 }
 
+// Same visual language as the answer screen: the statement stays up, and the
+// grid reappears with only the registered direction (if any) glowing — a
+// held position, not a fresh choice, so the other three are just the resting
+// hollow outline instead of disappearing.
 static void draw_ack_screen(char dir) {
     st7735_fill_screen(ST7735_BLACK);
-    char letter = dir_to_letter(dir);
-    if (letter) {
-        char s[2] = {letter, '\0'};
-        draw_centered(36, s, ST7735_GREEN, 7);
-    } else {
-        draw_centered(50, "NO ANSWER", ST7735_RED, 2);
-    }
+    draw_statement(s_statement);
+    draw_centered(NUM_Y, dir ? "RESPOSTA" : "SEM RESPOSTA", dir ? ST7735_AMBER : ST7735_RED, 1);
+    draw_answer_grid(dir);
 }
 
 // --- Gesture detection ----------------------------------------------------
@@ -229,7 +291,7 @@ void invoke_game_init(void) {
                         // once the NimBLE host has synced
 }
 
-void invoke_game_on_question(uint8_t answer_secs) {
+void invoke_game_on_question(uint8_t answer_secs, const char *statement) {
     if (s_state != GAME_IDLE) {
         ESP_LOGI(TAG, "question ignored, one already in progress");
         return; // a question is already running; first one wins
@@ -238,6 +300,7 @@ void invoke_game_on_question(uint8_t answer_secs) {
     s_answer_secs = answer_secs;
     if (s_answer_secs < MIN_ANSWER_S) s_answer_secs = MIN_ANSWER_S;
     if (s_answer_secs > MAX_ANSWER_S) s_answer_secs = MAX_ANSWER_S;
+    snprintf(s_statement, sizeof(s_statement), "%s", statement ? statement : "");
 
     ESP_LOGI(TAG, "-> ANSWER (%us)", s_answer_secs);
     s_state = GAME_ANSWER;

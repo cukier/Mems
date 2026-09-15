@@ -380,7 +380,7 @@ static void handle_q_frame(uint8_t cd, uint8_t to, uint8_t hop, uint64_t bitmap)
 
     bool is_member = (bitmap >> (s_band_num - 1)) & 1;
     if (is_member) {
-        invoke_game_on_question(to);
+        invoke_game_on_question(to, ""); // mesh frame carries no statement text
     }
 
     if (hop == 0) return;
@@ -500,6 +500,12 @@ static void handle_question_command(const cJSON *root) {
         to = (uint8_t)to_field->valueint;
     }
 
+    // "s" = the question statement (spec §2.1), for this node's own screen
+    // only — it doesn't fit in the compact mesh frame (see build_q_frame), so
+    // only a band directly GATT-connected to the app ever has it.
+    const cJSON *s_field = cJSON_GetObjectItemCaseSensitive(root, "s");
+    const char *statement = cJSON_IsString(s_field) ? s_field->valuestring : "";
+
     // Originating a question is not itself a "relay", so it goes straight
     // to the send queue — but it still needs to be marked seen, otherwise
     // this same node would try to re-relay it the moment it hears its own
@@ -516,7 +522,7 @@ static void handle_question_command(const cJSON *root) {
     // own broadcast back is a no-op) — a single-band setup would capture
     // nothing. Mirrors handle_q_frame()'s membership check for mesh-received Qs.
     if (s_band_num >= 1 && ((bitmap >> (s_band_num - 1)) & 1)) {
-        invoke_game_on_question(to);
+        invoke_game_on_question(to, statement);
     }
 
     ESP_LOGI(TAG, "Q send: cd=%u to=%u bitmap=0x%016" PRIx64, cd, to, bitmap);

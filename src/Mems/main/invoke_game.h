@@ -22,10 +22,13 @@ void invoke_game_init(void);
 
 // Called by invoke_ble.c when a Q mesh message names this node's band in its
 // bitmap. `answer_secs` is the answer window in seconds (the app's "to" field,
-// spec §2.1) — the band shows "VÁ!" + that count and captures the gesture over
-// the whole window. No-op if a question is already in progress (first Q wins,
-// same as the mesh layer's dedupe intent).
-void invoke_game_on_question(uint8_t answer_secs);
+// spec §2.1) — the band shows the question and captures the gesture over the
+// whole window. `statement` is the question text for the screen (the app's
+// "s" field); it never travels over the compact mesh frame, so mesh-relayed
+// bands always pass "" here — only a band directly GATT-connected to the app
+// has the real text. NULL is treated the same as "". No-op if a question is
+// already in progress (first Q wins, same as the mesh layer's dedupe intent).
+void invoke_game_on_question(uint8_t answer_secs, const char *statement);
 
 // Call once per IMU sample from the main sensor loop (main.c already reads
 // at ~5Hz, which is what CAPTURE's gesture-threshold check runs at). Drives

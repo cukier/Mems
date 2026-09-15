@@ -29,6 +29,9 @@ extern "C" {
 #define ST7735_CYAN ST7735_RGB565(0, 255, 255)
 #define ST7735_MAGENTA ST7735_RGB565(255, 0, 255)
 #define ST7735_GRAY ST7735_RGB565(64, 64, 64)
+// Brand accent — matches apps/invoke-console's --accent (#f5a524).
+#define ST7735_AMBER ST7735_RGB565(245, 165, 36)
+#define ST7735_AMBER_DIM ST7735_RGB565(90, 60, 15)
 
 typedef struct {
   spi_host_device_t host;
